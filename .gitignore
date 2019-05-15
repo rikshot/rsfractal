@@ -1,0 +1,8 @@
+.idea
+.vscode
+
+/target
+**/*.rs.bk
+
+perf.data*
+fractal.png
