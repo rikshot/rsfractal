@@ -2,6 +2,7 @@
 
 use futures::future::{join_all, lazy};
 use futures::executor::ThreadPool;
+use futures::task::SpawnExt;
 
 extern crate serde_json;
 
@@ -13,18 +14,19 @@ mod color;
 
 use mandelbrot::Config;
 
-async fn render(config: &Config) -> image::RgbImage {
+async fn render(mut pool: ThreadPool, config: &Config) -> image::RgbImage {
     let chunks = mandelbrot::chunkify(&config, config.chunk_size.unwrap_or(512));
 
-    let mut chunk_futures = Vec::with_capacity(chunks.len());
-    for chunk in &chunks {
+    let length = chunks.len();
+    let mut chunk_futures = Vec::with_capacity(length);
+    for chunk in chunks {
         let config = config.clone();
-        chunk_futures.push(lazy(move |_| {
+        let future = pool.spawn_with_handle(lazy(move |_| {
             let result = mandelbrot::iterate(&config, &chunk);
             (chunk, result)
-        }));
+        })).unwrap();
+        chunk_futures.push(future);
     }
-
     let chunk_results = join_all(chunk_futures).await;
 
     let mut histogram: Vec<u32> = vec![0; config.iterations as usize];
@@ -38,14 +40,15 @@ async fn render(config: &Config) -> image::RgbImage {
         total += result.total;
     }
 
-    let mut color_futures = Vec::with_capacity(chunks.len());
-    for (chunk, result) in &chunk_results {
+    let mut color_futures = Vec::with_capacity(length);
+    for (chunk, result) in chunk_results {
         let config = config.clone();
         let histogram = histogram.clone();
-        color_futures.push(lazy(move |_| {
+        let future = pool.spawn_with_handle(lazy(move |_| {
             let pixels = mandelbrot::color(&config, &chunk, &result, &histogram, total);
             (chunk, pixels)
-        }));
+        })).unwrap();
+        color_futures.push(future);
     }
 
     let mut image = image::RgbImage::new(config.width, config.height);
@@ -73,7 +76,7 @@ fn main() {
 
     println!("{:?}", config);
     let mut pool = ThreadPool::new().expect("unable to create a threadpool");
-    let image = pool.run(render(&config));
+    let image = pool.run(render(pool.clone(), &config));
     image.save("fractal.png").unwrap();
 }
 
@@ -92,7 +95,7 @@ mod tests {
         ).expect("could not parse config.json");
         let mut pool = ThreadPool::new().expect("unable to create a threadpool");
         bencher.iter(|| {
-            pool.run(super::render(&config));
+            pool.run(super::render(pool.clone(), &config));
         })
     }
 }
