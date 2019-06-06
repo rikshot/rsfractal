@@ -11,8 +11,7 @@ num-traits = "*"
 image = "*"
 serde = { version = "*", features = ["derive"] }
 serde_json = "*"
-num_cpus = "*"
-threadpool = "*"
+futures-preview = { version = "=0.3.0-alpha.16", features = ["async-await", "nightly"] }
 
 [profile.release]
 lto = true

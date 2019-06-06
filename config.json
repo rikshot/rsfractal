@@ -9,7 +9,7 @@
         "x": 1.875,
         "y": 1.25
     },
-    "iterations": 1000,
+    "iterations": 10000,
     "chunk_size": 256,
     "palette": [
         {

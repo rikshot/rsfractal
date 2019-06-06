@@ -1,13 +1,9 @@
-#![feature(test)]
+#![feature(test, async_await)]
 
-use std::sync::mpsc;
+use futures::future::{join_all, lazy};
+use futures::executor::ThreadPool;
 
 extern crate serde_json;
-
-extern crate num_cpus;
-extern crate threadpool;
-
-use threadpool::ThreadPool;
 
 mod vector;
 mod mandelbrot;
@@ -16,29 +12,24 @@ mod rectangle;
 mod color;
 
 use mandelbrot::Config;
-use mandelbrot::ChunkConfig;
-use mandelbrot::ChunkResult;
 
-fn render(config: &Config) -> image::RgbImage {
+async fn render(config: &Config) -> image::RgbImage {
     let chunks = mandelbrot::chunkify(&config, config.chunk_size.unwrap_or(512));
-    let pool = ThreadPool::new(num_cpus::get());
 
-    let (result_sender, result_receiver) = mpsc::channel();
-    for chunk in chunks {
-        let sender = result_sender.clone();
+    let mut chunk_futures = Vec::with_capacity(chunks.len());
+    for chunk in &chunks {
         let config = config.clone();
-        pool.execute(move || {
+        chunk_futures.push(lazy(move |_| {
             let result = mandelbrot::iterate(&config, &chunk);
-            sender.send((chunk, result)).unwrap();
-        });
+            (chunk, result)
+        }));
     }
-    pool.join();
-    drop(result_sender);
 
-    let results: Vec<(ChunkConfig, ChunkResult)> = result_receiver.iter().collect();
+    let chunk_results = join_all(chunk_futures).await;
+
     let mut histogram: Vec<u32> = vec![0; config.iterations as usize];
     let mut total: u32 = 0;
-    for (_chunk, result) in &results {
+    for (_chunk, result) in &chunk_results {
         let mut index = 0;
         for iterations in &result.histogram {
             histogram[index] += iterations;
@@ -47,21 +38,18 @@ fn render(config: &Config) -> image::RgbImage {
         total += result.total;
     }
 
-    let (color_sender, color_receiver) = mpsc::channel();
-    for (chunk, result) in results {
-        let sender = color_sender.clone();
+    let mut color_futures = Vec::with_capacity(chunks.len());
+    for (chunk, result) in &chunk_results {
         let config = config.clone();
         let histogram = histogram.clone();
-        pool.execute(move || {
+        color_futures.push(lazy(move |_| {
             let pixels = mandelbrot::color(&config, &chunk, &result, &histogram, total);
-            sender.send((chunk, pixels)).unwrap();
-        });
+            (chunk, pixels)
+        }));
     }
-    pool.join();
-    drop(color_sender);
 
     let mut image = image::RgbImage::new(config.width, config.height);
-    for (chunk, pixels) in color_receiver.iter() {
+    for (chunk, pixels) in join_all(color_futures).await {
         let mut index = 0;
         for y in chunk.screen.start.y..chunk.screen.end.y {
             for x in chunk.screen.start.x..chunk.screen.end.x {
@@ -84,7 +72,8 @@ fn main() {
     .expect("could not parse config.json");
 
     println!("{:?}", config);
-    let image = render(&config);
+    let mut pool = ThreadPool::new().expect("unable to create a threadpool");
+    let image = pool.run(render(&config));
     image.save("fractal.png").unwrap();
 }
 
@@ -101,8 +90,9 @@ mod tests {
                 .expect("config.json not found")
                 .as_str(),
         ).expect("could not parse config.json");
+        let mut pool = ThreadPool::new().expect("unable to create a threadpool");
         bencher.iter(|| {
-            super::render(&config);
+            pool.run(super::render(&config));
         })
     }
 }
