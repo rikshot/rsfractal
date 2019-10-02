@@ -1,10 +1,6 @@
-#![feature(test, async_await)]
-
 use futures::future::{join_all, lazy};
 use futures::executor::ThreadPool;
 use futures::task::SpawnExt;
-
-extern crate serde_json;
 
 mod vector;
 mod mandelbrot;

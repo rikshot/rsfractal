@@ -1,11 +1,6 @@
-extern crate num_complex;
-extern crate num_traits;
-
 use num_complex::Complex;
 use num_traits::Num;
 use num_traits::Zero;
-
-extern crate serde;
 
 use serde::Deserialize;
 

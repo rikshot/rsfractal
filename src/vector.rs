@@ -1,8 +1,4 @@
-extern crate serde;
-
 use serde::Deserialize;
-
-extern crate num_traits;
 
 use num_traits::Num;
 
