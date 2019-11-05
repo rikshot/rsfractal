@@ -132,7 +132,9 @@ fn rect_from_position<T: Num + Copy>(position: &Vector<T>, zoom: &Vector<T>) -> 
     )
 }
 
-pub fn chunkify(config: &Config, size: u32) -> Vec<ChunkConfig> {
+pub fn chunkify(config: &Config) -> Vec<ChunkConfig> {
+    let size = config.chunk_size.unwrap_or(512);
+
     let width_range = Range::new(0.0, config.width as f64);
     let height_range = Range::new(0.0, config.height as f64);
 
