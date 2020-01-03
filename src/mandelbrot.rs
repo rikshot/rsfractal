@@ -101,7 +101,13 @@ fn gradient(config: &Config, hue1: f64, hue2: f64, n: f64) -> Color {
     Color::lerp(color1, color2, n)
 }
 
-pub fn color(config: &Config, chunk_config: &ChunkConfig, result: &ChunkResult, histogram: &[u32], total: u32) -> Vec<Color> {
+pub fn color(
+    config: &Config,
+    chunk_config: &ChunkConfig,
+    result: &ChunkResult,
+    histogram: &[u32],
+    total: u32,
+) -> Vec<Color> {
     let size = chunk_config.screen.width() * chunk_config.screen.height();
     let mut pixels = Vec::new();
     for index in 0..size as usize {

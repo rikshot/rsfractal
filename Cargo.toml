@@ -14,9 +14,17 @@ serde = { version = "*", features = ["derive"] }
 image = "*"
 rayon = "*"
 serde_json = "*"
+criterion = "*"
+
+[lib]
+bench = false
 
 [[example]]
 name = "main"
+
+[[bench]]
+name = "main"
+harness = false
 
 [profile.release]
 lto = true

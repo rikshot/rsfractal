@@ -1,3 +1,5 @@
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+
 use rayon::prelude::*;
 
 use rsfractal::mandelbrot::*;
@@ -43,15 +45,31 @@ fn render(config: &Config) -> image::RgbImage {
     )
 }
 
-fn main() {
-    let config: Config = serde_json::from_str(
+fn criterion_benchmark(c: &mut Criterion) {
+    static MIN_CHUNK_SIZE: usize = 32;
+
+    let mut config: Config = serde_json::from_str(
         std::fs::read_to_string("config.json")
             .expect("config.json not found")
             .as_str(),
     )
     .expect("could not parse config.json");
 
-    println!("{:?}", config);
-    let image = render(&config);
-    image.save("fractal.png").unwrap();
+    let mut group = c.benchmark_group("chunk_size");
+    for size in 1..10 {
+        let chunk_size = size * MIN_CHUNK_SIZE;
+        group.throughput(Throughput::Bytes(chunk_size as u64));
+        group.bench_with_input(
+            BenchmarkId::from_parameter(size),
+            &chunk_size,
+            |b, &size| {
+                config.chunk_size = Some(size as u32);
+                b.iter(|| render(&config));
+            },
+        );
+    }
+    group.finish();
 }
+
+criterion_group!(benches, criterion_benchmark);
+criterion_main!(benches);
