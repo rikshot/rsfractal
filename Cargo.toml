@@ -8,12 +8,18 @@ edition = "2018"
 num = "*"
 num-complex = "*"
 num-traits = "*"
-image = "*"
 serde = { version = "*", features = ["derive"] }
-serde_json = "*"
+
+[dev-dependencies]
+image = "*"
 rayon = "*"
+serde_json = "*"
+
+[[example]]
+name = "main"
 
 [profile.release]
 lto = true
 opt-level = 3
 debug = true
+panic = "abort"

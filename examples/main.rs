@@ -1,14 +1,8 @@
-mod color;
-mod mandelbrot;
-mod range;
-mod rectangle;
-mod vector;
-
 use rayon::prelude::*;
 
-use mandelbrot::*;
+use rsfractal::mandelbrot;
 
-fn render(config: &Config) -> image::RgbImage {
+fn render(config: &mandelbrot::Config) -> image::RgbImage {
     let chunks = mandelbrot::chunkify(&config);
     let results: Vec<_> = chunks.par_iter().map(|chunk| { 
         mandelbrot::iterate(&config, &chunk) 
@@ -35,7 +29,7 @@ fn render(config: &Config) -> image::RgbImage {
 }
 
 fn main() {
-    let config: Config = serde_json::from_str(
+    let config: mandelbrot::Config = serde_json::from_str(
         std::fs::read_to_string("config.json")
             .expect("config.json not found")
             .as_str(),

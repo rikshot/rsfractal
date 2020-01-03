@@ -1,0 +1,3 @@
+[build]
+rustc-wrapper = "sccache"
+rustflags = ["-C", "link-arg=-fuse-ld=lld"]
