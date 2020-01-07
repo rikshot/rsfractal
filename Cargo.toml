@@ -10,10 +10,17 @@ num-complex = "*"
 num-traits = "*"
 serde = { version = "*", features = ["derive"] }
 
+[target.wasm32-unknown-unknown.dependencies]
+seed = "*"
+wasm-bindgen = "*"
+
 [dev-dependencies]
 image = "*"
 rayon = "*"
 serde_json = "*"
+
+[lib]
+crate-type = ["rlib", "cdylib"]
 
 [[example]]
 name = "main"

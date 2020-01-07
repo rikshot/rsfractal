@@ -1,0 +1,33 @@
+[env]
+CARGO_MAKE_EXTEND_WORKSPACE_MAKEFILE = "true"
+PORT = "8000"
+
+[tasks.build]
+description = "Build with wasm-pack"
+install_crate = { crate_name = "wasm-pack", binary = "wasm-pack", test_arg = "-V", min_version = "0.8.0" }
+command = "wasm-pack"
+args = ["build", "--target", "web", "--no-typescript", "--out-name", "rsfractal", "--out-dir", "docs", "--dev"]
+
+[tasks.build_release]
+description = "Build with wasm-pack"
+install_crate = { crate_name = "wasm-pack", binary = "wasm-pack", test_arg = "-V", min_version = "0.8.0" }
+command = "wasm-pack"
+args = ["build", "--target", "web", "--no-typescript", "--out-name", "rsfractal", "--out-dir", "docs"]
+
+[tasks.watch]
+description = "Build, create wasms, and watch/recompile files for changes"
+workspace = false
+dependencies = ["build"]
+watch = { ignore_pattern="docs/*" }
+
+[tasks.serve]
+description = "Start server"
+install_crate = { crate_name = "microserver", binary = "microserver", test_arg = "-h" }
+workspace = false
+command = "microserver"
+args = ["--port", "${PORT}"]
+
+[tasks.start]
+description = "Combine the build and serve tasks"
+workspace = false
+dependencies = ["build", "serve"]

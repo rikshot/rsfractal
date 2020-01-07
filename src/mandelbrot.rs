@@ -20,6 +20,21 @@ pub struct Config {
     pub chunk_size: Option<u32>,
 }
 
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            width: 300,
+            height: 150,
+            position: Vector { x: -0.5, y: 0.0 },
+            zoom: Vector { x: 1.875, y: 1.25 },
+            iterations: 1000,
+            chunk_size: Some(256),
+            palette: vec![Color { r: 255, b: 0, g: 0 }],
+        }
+    }
+}
+
+#[derive(Clone)]
 pub struct ChunkConfig {
     pub screen: Rectangle<u32>,
     complex: Rectangle<f64>,
@@ -38,14 +53,8 @@ pub fn iterate(config: &Config, chunk_config: &ChunkConfig) -> ChunkResult {
     let mut histogram: Vec<u32> = vec![0; config.iterations];
     let mut iterations: Vec<f64> = vec![0.0; size];
 
-    let width_range = Range::new(
-        chunk_config.screen.start.x as f64,
-        chunk_config.screen.end.x as f64,
-    );
-    let height_range = Range::new(
-        chunk_config.screen.start.y as f64,
-        chunk_config.screen.end.y as f64,
-    );
+    let width_range = Range::new(chunk_config.screen.start.x as f64, chunk_config.screen.end.x as f64);
+    let height_range = Range::new(chunk_config.screen.start.y as f64, chunk_config.screen.end.y as f64);
     let real_range = Range::new(chunk_config.complex.start.x, chunk_config.complex.end.x);
     let imaginary_range = Range::new(chunk_config.complex.start.y, chunk_config.complex.end.y);
 
@@ -101,7 +110,13 @@ fn gradient(config: &Config, hue1: f64, hue2: f64, n: f64) -> Color {
     Color::lerp(color1, color2, n)
 }
 
-pub fn color(config: &Config, chunk_config: &ChunkConfig, result: &ChunkResult, histogram: &[u32], total: u32) -> Vec<Color> {
+pub fn color(
+    config: &Config,
+    chunk_config: &ChunkConfig,
+    result: &ChunkResult,
+    histogram: &[u32],
+    total: u32,
+) -> Vec<Color> {
     let size = chunk_config.screen.width() * chunk_config.screen.height();
     let mut pixels = Vec::new();
     for index in 0..size as usize {
