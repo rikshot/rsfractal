@@ -5,10 +5,22 @@
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta name="description" content="Explore fractals with Rust and WASM" />
         <title>Rusty Fractals</title>
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.8.0/css/bulma.min.css" />
+        <style>
+            canvas {
+                display: block;
+                margin: 0 auto;
+                cursor: pointer;
+            }
+        </style>
     </head>
     <body>
-        <canvas id="canvas"></canvas>
-        <section id="app"></section>
+        <section class="section">
+            <div class="container is-fluid">
+                <canvas id="canvas" width="640" height="480"></canvas>
+            </div>
+        </section>
+        <section id="app" class="section"></section>
         <script type="module">
             import init from './rsfractal.js';
             init('./rsfractal_bg.wasm');

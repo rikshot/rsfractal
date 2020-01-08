@@ -23,13 +23,17 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            width: 300,
-            height: 150,
+            width: 640,
+            height: 480,
             position: Vector { x: -0.5, y: 0.0 },
             zoom: Vector { x: 1.875, y: 1.25 },
             iterations: 1000,
-            chunk_size: Some(256),
-            palette: vec![Color { r: 255, b: 0, g: 0 }],
+            chunk_size: Some(32),
+            palette: vec![
+                Color { r: 255, g: 0, b: 0 },
+                Color { r: 0, g: 255, b: 0 },
+                Color { r: 0, g: 0, b: 255 },
+            ],
         }
     }
 }
@@ -140,7 +144,7 @@ pub fn color(
     pixels
 }
 
-fn rect_from_position<T: Num + Copy>(position: &Vector<T>, zoom: &Vector<T>) -> Rectangle<T> {
+pub fn rect_from_position<T: Num + Copy>(position: &Vector<T>, zoom: &Vector<T>) -> Rectangle<T> {
     Rectangle::new(
         Vector::new(position.x - zoom.x, position.y - zoom.y),
         Vector::new(position.x + zoom.x, position.y + zoom.y),

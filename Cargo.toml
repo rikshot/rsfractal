@@ -13,6 +13,7 @@ serde = { version = "*", features = ["derive"] }
 [target.wasm32-unknown-unknown.dependencies]
 seed = "*"
 wasm-bindgen = "*"
+web-sys = { version = "*", features = ["DomRect", "DomRectReadOnly"] }
 
 [dev-dependencies]
 image = "*"

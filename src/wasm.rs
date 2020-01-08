@@ -1,11 +1,28 @@
 use super::mandelbrot::*;
+use super::range::*;
+use super::vector::*;
 
 use seed::{prelude::*, *};
+
+struct Model {
+    config: Config,
+    zoom_factor: f64,
+}
+
+impl Default for Model {
+    fn default() -> Self {
+        Self {
+            config: Config::default(),
+            zoom_factor: 0.25,
+        }
+    }
+}
 
 #[derive(Clone)]
 enum Msg {
     Render,
     Reset,
+    Click(web_sys::MouseEvent),
 }
 
 fn render(config: &Config) -> Option<()> {
@@ -46,24 +63,90 @@ fn render(config: &Config) -> Option<()> {
     Some(())
 }
 
-fn update(msg: Msg, config: &mut Config, _: &mut impl Orders<Msg>) {
+fn zoom(config: &mut Config, x: f64, y: f64, width: f64, height: f64, zoom_factor: f64) {
+    let width_range = Range::new(0.0, width);
+    let height_range = Range::new(0.0, height);
+    let selection = rect_from_position(&config.position, &config.zoom);
+    let real_range = Range::new(selection.start.x, selection.end.x);
+    let imaginary_range = Range::new(selection.start.y, selection.end.y);
+    config.position = Vector {
+        x: Range::scale(&width_range, x, &real_range),
+        y: Range::scale(&height_range, y, &imaginary_range),
+    };
+    config.zoom = Vector {
+        x: config.zoom.x * zoom_factor,
+        y: config.zoom.y * zoom_factor,
+    };
+}
+
+fn update(msg: Msg, model: &mut Model, _: &mut impl Orders<Msg>) {
     match msg {
-        Msg::Render => render(config).unwrap(),
+        Msg::Render => render(&model.config).unwrap(),
         Msg::Reset => {
-            *config = Config::default();
-            render(config).unwrap();
+            model.config = Config::default();
+            render(&model.config).unwrap();
+        }
+        Msg::Click(ev) => {
+            let target = &ev.target().unwrap();
+            let element = to_html_el(target);
+            if element.id() == "canvas" {
+                let rect = element.get_bounding_client_rect();
+                let x = ev.client_x() as f64 - rect.left();
+                let y = ev.client_y() as f64 - rect.top();
+                zoom(&mut model.config, x, y, rect.width(), rect.height(), model.zoom_factor);
+                render(&model.config).unwrap();
+            }
         }
     }
 }
 
-fn view(_model: &Config) -> impl View<Msg> {
-    vec![
-        button![simple_ev(Ev::Click, Msg::Render), "Render"],
-        button![simple_ev(Ev::Click, Msg::Reset), "Reset"],
+fn view(model: &Model) -> impl View<Msg> {
+    div![
+        class!["container"],
+        div![
+            class!["field"],
+            label![class!["label"], "X Position"],
+            div![
+                class!["control"],
+                input![
+                    class!["input"],
+                    attrs! {
+                        At::Type => "text",
+                        At::ReadOnly => "readonly"
+                        At::Value => model.config.position.x.to_string()
+                    }
+                ]
+            ]
+        ],
+        div![
+            class!["field"],
+            label![class!["label"], "Y Position"],
+            div![
+                class!["control"],
+                input![
+                    class!["input"],
+                    attrs! {
+                        At::Type => "text",
+                        At::ReadOnly => "readonly"
+                        At::Value => model.config.position.y.to_string()
+                    }
+                ]
+            ]
+        ],
+        button![class!["button"], simple_ev(Ev::Click, Msg::Render), "Render"],
+        button![class!["button"], simple_ev(Ev::Click, Msg::Reset), "Reset"],
     ]
+}
+
+fn window_events(_model: &Model) -> Vec<seed::virtual_dom::Listener<Msg>> {
+    let mut listeners = Vec::new();
+    listeners.push(mouse_ev("click", |ev| Msg::Click(ev)));
+    listeners
 }
 
 #[wasm_bindgen(start)]
 pub fn main() {
-    App::builder(update, view).build_and_start();
+    App::builder(update, view)
+        .window_events(window_events)
+        .build_and_start();
 }
