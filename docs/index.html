@@ -21,9 +21,11 @@
             </div>
         </section>
         <section id="app" class="section"></section>
+        <script src="./rsfractal.js"></script>
         <script type="module">
-            import init from './rsfractal.js';
-            init('./rsfractal_bg.wasm');
+            (async () => {
+                await wasm_bindgen('./rsfractal_bg.wasm');
+            })();
         </script>
     </body>
 </html>

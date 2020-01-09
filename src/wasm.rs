@@ -2,18 +2,32 @@ use super::mandelbrot::*;
 use super::range::*;
 use super::vector::*;
 
+use rayon::prelude::*;
 use seed::{prelude::*, *};
+use wasm_bindgen::JsCast;
 
 struct Model {
     config: Config,
     zoom_factor: f64,
+    thread_pool: rayon::ThreadPool,
 }
 
 impl Default for Model {
     fn default() -> Self {
+        let window = web_sys::window().unwrap();
+        let navigator = window.navigator();
+        let concurrency = navigator.hardware_concurrency() as usize;
+        let worker_pool = super::pool::WorkerPool::new(concurrency).unwrap();
+        let thread_pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(concurrency)
+            .spawn_handler(|thread| Ok(worker_pool.run(|| thread.run()).unwrap()))
+            .build()
+            .unwrap();
+
         Self {
             config: Config::default(),
             zoom_factor: 0.25,
+            thread_pool,
         }
     }
 }
@@ -25,30 +39,35 @@ enum Msg {
     Click(web_sys::MouseEvent),
 }
 
-fn render(config: &Config) -> Option<()> {
+fn render(model: &Model) -> Option<()> {
     let canvas = canvas("canvas")?;
     let context = canvas_context_2d(&canvas);
 
-    let chunks = chunkify(&config);
-    let results: Vec<_> = chunks.iter().map(|chunk| iterate(&config, &chunk)).collect();
-    let (histogram, total) = results
-        .iter()
-        .fold((vec![0; config.iterations], 0), |(histogram, total), result| {
-            (
-                result
-                    .histogram
-                    .iter()
-                    .enumerate()
-                    .map(|(index, iterations)| histogram[index] + iterations)
-                    .collect(),
-                total + result.total,
-            )
-        });
-    let colors: Vec<_> = chunks
-        .iter()
-        .zip(results)
-        .map(|(chunk, result)| color(&config, &chunk, &result, &histogram, total))
-        .collect();
+    let config = &model.config;
+    let (chunks, colors) = model.thread_pool.install(|| {
+        let chunks = chunkify(&config);
+        let results: Vec<_> = chunks.par_iter().map(|chunk| iterate(&config, &chunk)).collect();
+        let (histogram, total) = results
+            .iter()
+            .fold((vec![0; config.iterations], 0), |(histogram, total), result| {
+                (
+                    result
+                        .histogram
+                        .iter()
+                        .enumerate()
+                        .map(|(index, iterations)| histogram[index] + iterations)
+                        .collect(),
+                    total + result.total,
+                )
+            });
+        let colors: Vec<_> = chunks
+            .par_iter()
+            .zip(results)
+            .map(|(chunk, result)| color(&config, &chunk, &result, &histogram, total))
+            .collect();
+        (chunks, colors)
+    });
+
     chunks.iter().zip(colors).for_each(|(chunk, colors)| {
         let mut index = 0;
         for y in chunk.screen.start.y..chunk.screen.end.y {
@@ -60,6 +79,7 @@ fn render(config: &Config) -> Option<()> {
             }
         }
     });
+
     Some(())
 }
 
@@ -81,10 +101,10 @@ fn zoom(config: &mut Config, x: f64, y: f64, width: f64, height: f64, zoom_facto
 
 fn update(msg: Msg, model: &mut Model, _: &mut impl Orders<Msg>) {
     match msg {
-        Msg::Render => render(&model.config).unwrap(),
+        Msg::Render => render(&model).unwrap(),
         Msg::Reset => {
             model.config = Config::default();
-            render(&model.config).unwrap();
+            render(&model).unwrap();
         }
         Msg::Click(ev) => {
             let target = &ev.target().unwrap();
@@ -94,7 +114,7 @@ fn update(msg: Msg, model: &mut Model, _: &mut impl Orders<Msg>) {
                 let x = ev.client_x() as f64 - rect.left();
                 let y = ev.client_y() as f64 - rect.top();
                 zoom(&mut model.config, x, y, rect.width(), rect.height(), model.zoom_factor);
-                render(&model.config).unwrap();
+                render(&model).unwrap();
             }
         }
     }
@@ -146,7 +166,9 @@ fn window_events(_model: &Model) -> Vec<seed::virtual_dom::Listener<Msg>> {
 
 #[wasm_bindgen(start)]
 pub fn main() {
-    App::builder(update, view)
-        .window_events(window_events)
-        .build_and_start();
+    if js_sys::global().has_type::<web_sys::Window>() {
+        App::builder(update, view)
+            .window_events(window_events)
+            .build_and_start();
+    }
 }

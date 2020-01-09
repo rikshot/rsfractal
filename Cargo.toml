@@ -9,15 +9,16 @@ num = "*"
 num-complex = "*"
 num-traits = "*"
 serde = { version = "*", features = ["derive"] }
+rayon = "*"
 
 [target.wasm32-unknown-unknown.dependencies]
 seed = "*"
 wasm-bindgen = "*"
-web-sys = { version = "*", features = ["DomRect", "DomRectReadOnly"] }
+js-sys = "*"
+web-sys = { version = "*", features = ["DomRect", "DomRectReadOnly", "DedicatedWorkerGlobalScope", "MessageEvent", "ErrorEvent", "Event", "Worker", "Url", "Blob", "BlobPropertyBag", "Navigator"] }
 
 [dev-dependencies]
 image = "*"
-rayon = "*"
 serde_json = "*"
 
 [lib]
@@ -29,4 +30,5 @@ name = "main"
 [profile.release]
 lto = true
 opt-level = 3
+debug = true
 panic = "abort"

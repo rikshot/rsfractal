@@ -6,7 +6,7 @@ PORT = "8000"
 description = "Build with wasm-pack"
 install_crate = { crate_name = "wasm-pack", binary = "wasm-pack", test_arg = "-V", min_version = "0.8.0" }
 command = "wasm-pack"
-args = ["build", "--target", "web", "--no-typescript", "--out-name", "rsfractal", "--out-dir", "docs", "--dev"]
+args = ["build", "--target", "no-modules", "--no-typescript", "--out-name", "rsfractal", "--out-dir", "docs", "--dev"]
 
 [tasks.build_release]
 description = "Build with wasm-pack"
