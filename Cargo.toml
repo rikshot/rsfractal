@@ -29,5 +29,4 @@ name = "main"
 [profile.release]
 lto = true
 opt-level = 3
-debug = true
 panic = "abort"
