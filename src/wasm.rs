@@ -44,7 +44,9 @@ fn render(model: &Model) -> Option<()> {
     let context = canvas_context_2d(&canvas);
 
     let config = &model.config;
-    let (chunks, colors) = model.thread_pool.install(|| {
+    let mut pixels = vec![255u8; (config.width * config.height) as usize * 4];
+
+    model.thread_pool.install(|| {
         let chunks = chunkify(&config);
         let results: Vec<_> = chunks.par_iter().map(|chunk| iterate(&config, &chunk)).collect();
         let (histogram, total) = results
@@ -65,22 +67,46 @@ fn render(model: &Model) -> Option<()> {
             .zip(results)
             .map(|(chunk, result)| color(&config, &chunk, &result, &histogram, total))
             .collect();
-        (chunks, colors)
+        chunks.iter().zip(colors).for_each(|(chunk, colors)| {
+            let mut index = 0;
+            for y in chunk.screen.start.y..chunk.screen.end.y {
+                for x in chunk.screen.start.x..chunk.screen.end.x {
+                    let color = &colors[index];
+                    let pixel_index = (y as usize * config.width as usize * 4) + x as usize * 4;
+                    pixels[pixel_index] = color.r;
+                    pixels[pixel_index + 1] = color.g;
+                    pixels[pixel_index + 2] = color.b;
+                    index += 1;
+                }
+            }
+        });
     });
 
-    chunks.iter().zip(colors).for_each(|(chunk, colors)| {
-        let mut index = 0;
-        for y in chunk.screen.start.y..chunk.screen.end.y {
-            for x in chunk.screen.start.x..chunk.screen.end.x {
-                let pixel = &colors[index];
-                context.set_fill_style(&JsValue::from_str(&format!("rgb({},{},{})", pixel.r, pixel.g, pixel.b)));
-                context.fill_rect(x.into(), y.into(), 1.0, 1.0);
-                index += 1;
-            }
-        }
-    });
+    let image_data = image_data(
+        pixels.as_ptr() as usize,
+        (config.width * config.height) as usize * 4,
+        config.width as u32,
+        config.height as u32,
+    );
+    context
+        .put_image_data(&image_data.unchecked_into::<web_sys::ImageData>(), 0.0, 0.0)
+        .unwrap();
 
     Some(())
+}
+
+#[wasm_bindgen]
+extern "C" {
+    pub type ImageData;
+
+    #[wasm_bindgen(constructor, catch)]
+    fn new(data: &js_sys::Uint8ClampedArray, width: f64, height: f64) -> Result<ImageData, JsValue>;
+}
+
+fn image_data(base: usize, len: usize, width: u32, height: u32) -> ImageData {
+    let mem = wasm_bindgen::memory().unchecked_into::<js_sys::WebAssembly::Memory>();
+    let mem = js_sys::Uint8ClampedArray::new(&mem.buffer()).slice(base as u32, (base + len) as u32);
+    ImageData::new(&mem, width as f64, height as f64).unwrap()
 }
 
 fn zoom(config: &mut Config, x: f64, y: f64, width: f64, height: f64, zoom_factor: f64) {

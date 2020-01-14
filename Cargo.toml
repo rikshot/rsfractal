@@ -5,7 +5,6 @@ authors = ["Ville Orkas <ville@orkas.fi>"]
 edition = "2018"
 
 [dependencies]
-num = "*"
 num-complex = "*"
 num-traits = "*"
 serde = { version = "*", features = ["derive"] }
@@ -15,7 +14,7 @@ rayon = "*"
 seed = "*"
 wasm-bindgen = "*"
 js-sys = "*"
-web-sys = { version = "*", features = ["DomRect", "DomRectReadOnly", "DedicatedWorkerGlobalScope", "MessageEvent", "ErrorEvent", "Event", "Worker", "Url", "Blob", "BlobPropertyBag", "Navigator"] }
+web-sys = { version = "*", features = ["DomRect", "DomRectReadOnly", "DedicatedWorkerGlobalScope", "MessageEvent", "ErrorEvent", "Event", "Worker", "Url", "Blob", "BlobPropertyBag", "Navigator", "ImageData"] }
 
 [dev-dependencies]
 image = "*"

@@ -27,7 +27,7 @@ impl Default for Config {
             height: 480,
             position: Vector { x: -0.5, y: 0.0 },
             zoom: Vector { x: 1.875, y: 1.25 },
-            iterations: 1000,
+            iterations: 10000,
             chunk_size: Some(32),
             palette: vec![
                 Color { r: 255, g: 0, b: 0 },
