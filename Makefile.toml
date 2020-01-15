@@ -5,16 +5,31 @@ PORT = "8000"
 skip_core_tasks = true
 
 [tasks.debug]
-description = "Build debug with wasm-pack"
-install_crate = { crate_name = "wasm-pack", binary = "wasm-pack", test_arg = "-V", min_version = "0.8.0" }
-command = "wasm-pack"
-args = ["build", "--target", "no-modules", "--no-typescript", "--out-name", "rsfractal", "--out-dir", "docs", "--dev"]
+description = "Build debug"
+env = { RUSTFLAGS = "-C target-feature=+atomics,+bulk-memory" }
+command = "cargo"
+args = ["build", "--target", "wasm32-unknown-unknown", "-Z", "build-std=std,panic_abort"]
+
+[tasks.debug-wasm]
+description = "Generate debug wrapper"
+dependencies = ["debug"]
+command = "wasm-bindgen"
+args = ["target/wasm32-unknown-unknown/debug/rsfractal.wasm", "--out-dir", "docs", "--no-modules", "--no-typescript"]
 
 [tasks.release]
-description = "Build release with wasm-pack"
-install_crate = { crate_name = "wasm-pack", binary = "wasm-pack", test_arg = "-V", min_version = "0.8.0" }
-command = "wasm-pack"
-args = ["build", "--target", "web", "--no-typescript", "--out-name", "rsfractal", "--out-dir", "docs"]
+description = "Build release"
+env = { RUSTFLAGS = "-C target-feature=+atomics,+bulk-memory" }
+command = "cargo"
+args = ["build", "--target", "wasm32-unknown-unknown", "-Z", "build-std=std,panic_abort", "--release"]
+
+[tasks.release-wasm]
+description = "Generate release wrapper"
+command = "wasm-bindgen"
+args = ["target/wasm32-unknown-unknown/release/rsfractal.wasm", "--out-dir", "docs", "--no-modules", "--no-typescript"]
+
+[tasks.fix-wrapper]
+description = "Fix missing typeof check for Window when running inside a Worker"
+script = ["sed -i 's/getObject(arg0) instanceof Window/typeof Window !== \"undefined\" \\&\\& getObject(arg0) instanceof Window/' docs/rsfractal.js"]
 
 [tasks.optimize-wasm]
 description = "Optimize release WASM with wasm-opt"
@@ -24,18 +39,18 @@ args = ["-O4", "docs/rsfractal_bg.wasm", "-o", "docs/rsfractal_bg.wasm"]
 
 [tasks.optimize-js]
 description = "Optimize release JS with terser"
-dependencies = ["release"]
+dependencies = ["release-wasm"]
 command = "terser"
 args = ["-c", "-m", "-o", "docs/rsfractal.js", "docs/rsfractal.js"]
 
 [tasks.publish]
 description = "Publish with optimizations"
-dependencies = ["release", "optimize-wasm", "optimize-js"]
+dependencies = ["release", "release-wasm", "fix-wrapper", "optimize-wasm", "optimize-js"]
 
 [tasks.watch]
 description = "Build, create wasms, and watch/recompile files for changes"
 workspace = false
-dependencies = ["debug"]
+dependencies = ["debug", "debug-wasm", "fix-wrapper"]
 watch = { ignore_pattern="docs/*" }
 
 [tasks.serve]
@@ -48,4 +63,4 @@ args = ["--port", "${PORT}"]
 [tasks.start]
 description = "Combine the build and serve tasks"
 workspace = false
-dependencies = ["debug", "serve"]
+dependencies = ["debug", "debug-wasm", "fix-wrapper", "serve"]
