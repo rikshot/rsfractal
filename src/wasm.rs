@@ -110,9 +110,16 @@ fn window_events(_model: &Model) -> Vec<seed::virtual_dom::Listener<Msg>> {
     listeners
 }
 
+fn after_mount(_: Url, _: &mut impl Orders<Msg>) -> AfterMount<Model> {
+    let model = Model::default();
+    render(&model.config);
+    AfterMount::new(model)
+}
+
 #[wasm_bindgen(start)]
 pub fn main() {
     App::builder(update, super::ui::view)
+        .after_mount(after_mount)
         .window_events(window_events)
         .build_and_start();
 }

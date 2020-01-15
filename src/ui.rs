@@ -5,6 +5,7 @@ use super::wasm::{Model, Msg};
 pub fn view(model: &Model) -> impl View<Msg> {
     div![
         class!["container"],
+        h2![class!["title", "is-2"], "Controls"],
         div![
             class!["field", "is-horizontal"],
             div![class!["field-label", "is-normal"], label![class!["label"], "Size"]],
