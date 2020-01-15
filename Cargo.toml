@@ -5,7 +5,6 @@ authors = ["Ville Orkas <ville@orkas.fi>"]
 edition = "2018"
 
 [dependencies]
-num = "*"
 num-complex = "*"
 num-traits = "*"
 serde = { version = "*", features = ["derive"] }

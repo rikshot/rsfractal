@@ -4,9 +4,9 @@ use super::vector::*;
 
 use seed::{prelude::*, *};
 
-struct Model {
-    config: Config,
-    zoom_factor: f64,
+pub struct Model {
+    pub config: Config,
+    pub zoom_factor: f64,
 }
 
 impl Default for Model {
@@ -19,10 +19,11 @@ impl Default for Model {
 }
 
 #[derive(Clone)]
-enum Msg {
+pub enum Msg {
     Render,
     Reset,
     Click(web_sys::MouseEvent),
+    ChangeIterations(String),
 }
 
 fn render(config: &Config) -> Option<()> {
@@ -97,45 +98,10 @@ fn update(msg: Msg, model: &mut Model, _: &mut impl Orders<Msg>) {
                 render(&model.config).unwrap();
             }
         }
+        Msg::ChangeIterations(input) => {
+            model.config.iterations = input.parse::<usize>().unwrap_or(Config::default().iterations)
+        }
     }
-}
-
-fn view(model: &Model) -> impl View<Msg> {
-    div![
-        class!["container"],
-        div![
-            class!["field"],
-            label![class!["label"], "X Position"],
-            div![
-                class!["control"],
-                input![
-                    class!["input"],
-                    attrs! {
-                        At::Type => "text",
-                        At::ReadOnly => "readonly"
-                        At::Value => model.config.position.x.to_string()
-                    }
-                ]
-            ]
-        ],
-        div![
-            class!["field"],
-            label![class!["label"], "Y Position"],
-            div![
-                class!["control"],
-                input![
-                    class!["input"],
-                    attrs! {
-                        At::Type => "text",
-                        At::ReadOnly => "readonly"
-                        At::Value => model.config.position.y.to_string()
-                    }
-                ]
-            ]
-        ],
-        button![class!["button"], simple_ev(Ev::Click, Msg::Render), "Render"],
-        button![class!["button"], simple_ev(Ev::Click, Msg::Reset), "Reset"],
-    ]
 }
 
 fn window_events(_model: &Model) -> Vec<seed::virtual_dom::Listener<Msg>> {
@@ -146,7 +112,7 @@ fn window_events(_model: &Model) -> Vec<seed::virtual_dom::Listener<Msg>> {
 
 #[wasm_bindgen(start)]
 pub fn main() {
-    App::builder(update, view)
+    App::builder(update, super::ui::view)
         .window_events(window_events)
         .build_and_start();
 }
