@@ -16,7 +16,25 @@ lazy_static = "*"
 seed = "*"
 wasm-bindgen = "*"
 js-sys = "*"
-web-sys = { version = "*", features = ["DomRect", "DomRectReadOnly", "DedicatedWorkerGlobalScope", "MessageEvent", "ErrorEvent", "Event", "Worker", "Url", "Blob", "BlobPropertyBag", "Navigator", "ImageData"] }
+
+[target.wasm32-unknown-unknown.dependencies.web-sys]
+version = "*"
+features = [
+    "DomRect",
+    "DomRectReadOnly",
+    "DedicatedWorkerGlobalScope",
+    "WorkerGlobalScope",
+    "WorkerLocation",
+    "MessageEvent",
+    "ErrorEvent",
+    "Event",
+    "Worker",
+    "Url",
+    "Blob",
+    "BlobPropertyBag",
+    "Navigator",
+    "ImageData"
+]
 
 [dev-dependencies]
 image = "*"

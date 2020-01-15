@@ -68,8 +68,15 @@ impl WorkerPool {
     /// Returns any error that may happen while a JS web worker is created and a
     /// message is sent to it.
     fn spawn(&self) -> Result<Worker, JsValue> {
-        log!["Spawning worker!"];
-        const worker_content: &str = "importScripts(\"http://localhost:8000/docs/rsfractal.js\"),self.onmessage=(a=>{let e=wasm_bindgen(...a.data).catch(a=>{throw setTimeout(()=>{throw a}),a});self.onmessage=(async a=>{await e,wasm_bindgen.child_entry_point(a.data)})});";
+        const NAME: &'static str = env!("CARGO_PKG_NAME");
+        let global = js_sys::global().unchecked_into::<DedicatedWorkerGlobalScope>();
+        let location = global.location();
+        let origin = location.origin();
+        let pathname = location.pathname();
+        let path_split: Vec<&str> = pathname.rsplitn(2, '/').collect();
+        let root = path_split[1];
+        let wrapper_url = format!("{}{}/{}.js", origin, root, NAME);
+        let worker_content = format!("importScripts(\"{}\"),self.onmessage=(a=>{{let e=wasm_bindgen(...a.data).catch(a=>{{throw setTimeout(()=>{{throw a}}),a}});self.onmessage=(async a=>{{await e,wasm_bindgen.child_entry_point(a.data)}})}});", wrapper_url);
         let mut worker_blob_property_bag = BlobPropertyBag::new();
         worker_blob_property_bag.type_("text/javascript");
         let worker_blob = Blob::new_with_str_sequence_and_options(
@@ -87,8 +94,6 @@ impl WorkerPool {
         array.push(&wasm_bindgen::module());
         array.push(&wasm_bindgen::memory());
         worker.post_message(&array)?;
-
-        log!["Spawned worker!"];
 
         Ok(worker)
     }

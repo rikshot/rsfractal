@@ -158,7 +158,6 @@ fn window_events(_model: &Model) -> Vec<seed::virtual_dom::Listener<Msg>> {
 
 fn after_mount(_: Url, _: &mut impl Orders<Msg>) -> AfterMount<Model> {
     let model = Model::default();
-    //render(&model);
     AfterMount::new(model)
 }
 
