@@ -9,6 +9,8 @@ num-complex = "*"
 num-traits = "*"
 serde = { version = "*", features = ["derive"] }
 rayon = "*"
+regex = "*"
+lazy_static = "*"
 
 [target.wasm32-unknown-unknown.dependencies]
 seed = "*"

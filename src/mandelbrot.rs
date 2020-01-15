@@ -22,18 +22,17 @@ pub struct Config {
 
 impl Default for Config {
     fn default() -> Self {
+        let palette = ["#3e0000", "#6b1d09", "#9a542e", "#bf935c", "#d0c8a8"];
+        let palette: Vec<Color> = palette.iter().map(|hex| Color::from_hex(hex).unwrap()).collect();
+
         Self {
-            width: 640,
-            height: 480,
+            width: 1024,
+            height: 768,
             position: Vector { x: -0.5, y: 0.0 },
             zoom: Vector { x: 1.875, y: 1.25 },
-            iterations: 10000,
-            chunk_size: Some(32),
-            palette: vec![
-                Color { r: 255, g: 0, b: 0 },
-                Color { r: 0, g: 255, b: 0 },
-                Color { r: 0, g: 0, b: 255 },
-            ],
+            iterations: 1000,
+            chunk_size: Some(64),
+            palette: palette.repeat(2),
         }
     }
 }
