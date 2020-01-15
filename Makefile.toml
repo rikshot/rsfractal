@@ -1,23 +1,41 @@
 [env]
-CARGO_MAKE_EXTEND_WORKSPACE_MAKEFILE = "true"
 PORT = "8000"
 
-[tasks.build]
-description = "Build with wasm-pack"
+[config]
+skip_core_tasks = true
+
+[tasks.debug]
+description = "Build debug with wasm-pack"
 install_crate = { crate_name = "wasm-pack", binary = "wasm-pack", test_arg = "-V", min_version = "0.8.0" }
 command = "wasm-pack"
 args = ["build", "--target", "no-modules", "--no-typescript", "--out-name", "rsfractal", "--out-dir", "docs", "--dev"]
 
-[tasks.build_release]
-description = "Build with wasm-pack"
+[tasks.release]
+description = "Build release with wasm-pack"
 install_crate = { crate_name = "wasm-pack", binary = "wasm-pack", test_arg = "-V", min_version = "0.8.0" }
 command = "wasm-pack"
 args = ["build", "--target", "web", "--no-typescript", "--out-name", "rsfractal", "--out-dir", "docs"]
 
+[tasks.optimize-wasm]
+description = "Optimize release WASM with wasm-opt"
+dependencies = ["release"]
+command = "wasm-opt"
+args = ["-O4", "docs/rsfractal_bg.wasm", "-o", "docs/rsfractal_bg.wasm"]
+
+[tasks.optimize-js]
+description = "Optimize release JS with terser"
+dependencies = ["release"]
+command = "terser"
+args = ["-c", "-m", "-o", "docs/rsfractal.js", "docs/rsfractal.js"]
+
+[tasks.publish]
+description = "Publish with optimizations"
+dependencies = ["release", "optimize-wasm", "optimize-js"]
+
 [tasks.watch]
 description = "Build, create wasms, and watch/recompile files for changes"
 workspace = false
-dependencies = ["build"]
+dependencies = ["debug"]
 watch = { ignore_pattern="docs/*" }
 
 [tasks.serve]
@@ -30,4 +48,4 @@ args = ["--port", "${PORT}"]
 [tasks.start]
 description = "Combine the build and serve tasks"
 workspace = false
-dependencies = ["build", "serve"]
+dependencies = ["debug", "serve"]

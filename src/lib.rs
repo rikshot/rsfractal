@@ -9,3 +9,6 @@ pub mod wasm;
 
 #[cfg(target_arch = "wasm32")]
 pub mod pool;
+
+#[cfg(target_arch = "wasm32")]
+pub mod ui;
