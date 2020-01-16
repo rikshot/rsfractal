@@ -6,8 +6,7 @@ use rayon::prelude::*;
 use seed::{prelude::*, *};
 use wasm_bindgen::JsCast;
 
-use futures::channel::mpsc;
-use futures_util::stream::StreamExt;
+use futures::channel::oneshot;
 
 pub struct Model {
     pub config: Config,
@@ -58,10 +57,13 @@ fn render(model: &Model) -> Option<()> {
         .build()
         .unwrap();
 
-    let (tx, rx) = mpsc::unbounded();
+    let (tx, rx) = oneshot::channel();
     worker_pool
         .run(move || {
             thread_pool.install(move || {
+                let global = js_sys::global().unchecked_into::<web_sys::Window>();
+                let performance = global.performance().unwrap();
+                let start = performance.now();
                 let chunks = chunkify(&config);
                 let results: Vec<_> = chunks.par_iter().map(|chunk| iterate(&config, &chunk)).collect();
                 let (histogram, total) =
@@ -95,27 +97,21 @@ fn render(model: &Model) -> Option<()> {
                             index += 1;
                         }
                     }
-                    tx.unbounded_send(chunk.clone()).unwrap();
                 });
+                let end = performance.now();
+                tx.send(end - start).unwrap();
             });
         })
         .unwrap();
 
-    wasm_bindgen_futures::spawn_local(rx.for_each(move |chunk| {
+    wasm_bindgen_futures::spawn_local(async move {
+        let duration = rx.await.unwrap();
         let image_data = image_data(base, size as usize, width as u32, height as u32);
         context
-            .put_image_data_with_dirty_x_and_dirty_y_and_dirty_width_and_dirty_height(
-                &image_data.unchecked_into::<web_sys::ImageData>(),
-                0.0,
-                0.0,
-                chunk.screen.start.x as f64,
-                chunk.screen.start.y as f64,
-                chunk.screen.width() as f64,
-                chunk.screen.height() as f64,
-            )
+            .put_image_data(&image_data.unchecked_into::<web_sys::ImageData>(), 0.0, 0.0)
             .unwrap();
-        futures::future::ready(())
-    }));
+        log![format!("Rendering took: {}ms", duration)];
+    });
 
     Some(())
 }
