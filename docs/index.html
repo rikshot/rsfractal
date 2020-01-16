@@ -23,10 +23,8 @@
         </section>
         <section id="app" class="section"></section>
         <script src="./rsfractal.js"></script>
-        <script type="module">
-            (async () => {
-                await wasm_bindgen('./rsfractal_bg.wasm');
-            })();
+        <script>
+            wasm_bindgen('./rsfractal_bg.wasm');
         </script>
     </body>
 </html>

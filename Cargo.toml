@@ -15,7 +15,10 @@ lazy_static = "*"
 [target.wasm32-unknown-unknown.dependencies]
 seed = "*"
 wasm-bindgen = "*"
+wasm-bindgen-futures = "*"
 js-sys = "*"
+futures = "*"
+futures-util = "*"
 
 [target.wasm32-unknown-unknown.dependencies.web-sys]
 version = "*"
