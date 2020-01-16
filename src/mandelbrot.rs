@@ -26,12 +26,12 @@ impl Default for Config {
         let palette: Vec<Color> = palette.iter().map(|hex| Color::from_hex(hex).unwrap()).collect();
 
         Self {
-            width: 1024,
-            height: 768,
+            width: 1280,
+            height: 720,
             position: Vector { x: -0.5, y: 0.0 },
-            zoom: Vector { x: 1.875, y: 1.25 },
+            zoom: Vector { x: 2.0, y: 1.125 },
             iterations: 1000,
-            chunk_size: Some(64),
+            chunk_size: Some(128),
             palette: palette.repeat(2),
         }
     }
