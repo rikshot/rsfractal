@@ -15,6 +15,7 @@ use web_sys::{DedicatedWorkerGlobalScope, MessageEvent};
 use web_sys::{ErrorEvent, Event, Worker};
 
 #[wasm_bindgen]
+#[derive(Clone)]
 pub struct WorkerPool {
     state: Rc<PoolState>,
 }

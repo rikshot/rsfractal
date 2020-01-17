@@ -9,6 +9,7 @@ use wasm_bindgen::JsCast;
 
 use futures::channel::oneshot;
 
+#[derive(Clone)]
 pub struct Model {
     pub config: Config,
     pub zoom_factor: f64,
@@ -41,7 +42,17 @@ pub enum Msg {
     ChangeColors(String),
 }
 
-fn render(model: &Model) -> Option<()> {
+async fn progressive_render(model: &Model) {
+    let mut i = 32;
+    while i < model.config.iterations {
+        let mut model = model.clone();
+        model.config.iterations = i;
+        wasm_bindgen_futures::JsFuture::from(render(&model).unwrap()).await;
+        i *= 2;
+    }
+}
+
+fn render(model: &Model) -> Option<js_sys::Promise> {
     let canvas = canvas("canvas")?;
     let context = canvas_context_2d(&canvas);
 
@@ -106,16 +117,15 @@ fn render(model: &Model) -> Option<()> {
         })
         .unwrap();
 
-    wasm_bindgen_futures::spawn_local(async move {
+    Some(wasm_bindgen_futures::future_to_promise(async move {
         let duration = rx.await.unwrap();
         let image_data = image_data(base, size as usize, width as u32, height as u32);
         context
             .put_image_data(&image_data.unchecked_into::<web_sys::ImageData>(), 0.0, 0.0)
             .unwrap();
         log![format!("Rendering took: {}ms", duration)];
-    });
-
-    Some(())
+        Ok(JsValue::UNDEFINED)
+    }))
 }
 
 #[wasm_bindgen]
@@ -165,7 +175,10 @@ fn update(msg: Msg, model: &mut Model, _: &mut impl Orders<Msg>) {
                 let x = ev.client_x() as f64 - rect.left();
                 let y = ev.client_y() as f64 - rect.top();
                 zoom(&mut model.config, x, y, rect.width(), rect.height(), model.zoom_factor);
-                render(model);
+                let model = model.clone();
+                wasm_bindgen_futures::spawn_local(async move {
+                    progressive_render(&model).await;
+                });
             }
         }
         Msg::ChangeIterations(input) => {
