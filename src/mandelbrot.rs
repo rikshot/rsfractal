@@ -32,7 +32,7 @@ impl Default for Config {
             zoom: Vector { x: 2.0, y: 1.125 },
             iterations: 1000,
             chunk_size: Some(128),
-            palette: palette.repeat(2),
+            palette,
         }
     }
 }

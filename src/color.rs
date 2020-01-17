@@ -70,6 +70,10 @@ impl Color {
         })
     }
 
+    pub fn to_hex(&self) -> String {
+        format!("#{:02x}{:02x}{:02x}", self.r, self.g, self.b)
+    }
+
     pub fn lerp(color1: &Color, color2: &Color, value: f64) -> Color {
         Color {
             r: (color1.r as f64 + (color2.r as f64 - color1.r as f64) * value) as u8,

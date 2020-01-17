@@ -1,3 +1,4 @@
+use super::color::*;
 use super::mandelbrot::*;
 use super::range::*;
 use super::vector::*;
@@ -37,6 +38,7 @@ pub enum Msg {
     Reset,
     Click(web_sys::MouseEvent),
     ChangeIterations(String),
+    ChangeColors(String),
 }
 
 fn render(model: &Model) -> Option<()> {
@@ -168,6 +170,13 @@ fn update(msg: Msg, model: &mut Model, _: &mut impl Orders<Msg>) {
         }
         Msg::ChangeIterations(input) => {
             model.config.iterations = input.parse::<usize>().unwrap_or(Config::default().iterations)
+        }
+        Msg::ChangeColors(input) => {
+            let colors: Vec<&str> = input.split(",").collect();
+            model.config.palette = colors.iter().filter_map(|hex| Color::from_hex(hex)).collect();
+            if model.config.palette.is_empty() {
+                model.config.palette = Config::default().palette;
+            }
         }
     }
 }

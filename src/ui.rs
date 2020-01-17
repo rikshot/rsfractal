@@ -137,6 +137,30 @@ pub fn view(model: &Model) -> impl View<Msg> {
         ],
         div![
             class!["field", "is-horizontal"],
+            div![class!["field-label", "is-normal"], label![class!["label"], "Colors"]],
+            div![
+                class!["field-body"],
+                div![
+                    class!["field"],
+                    p![
+                        class!["control", "is-expanded"],
+                        input![
+                            class!["input"],
+                            attrs! {
+                                At::Type => "text",
+                                At::Value => {
+                                    let colors: Vec<String> = model.config.palette.iter().map(|color| color.to_hex()).collect();
+                                    colors.join(",")
+                                }
+                            },
+                            input_ev(Ev::Input, Msg::ChangeColors)
+                        ]
+                    ]
+                ]
+            ]
+        ],
+        div![
+            class!["field", "is-horizontal"],
             div![class!["field-label"]],
             div![
                 class!["field-body"],
