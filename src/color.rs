@@ -1,4 +1,6 @@
+#[cfg(not(target_arch = "wasm32"))]
 use regex::Regex;
+
 use serde::Deserialize;
 
 #[derive(Debug, Clone, Copy, Deserialize)]
@@ -19,6 +21,7 @@ impl Color {
         Color { r, g, b }
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn from_hex(hex: &str) -> Option<Color> {
         lazy_static! {
             static ref HEX_RE: Regex = Regex::new(r"^#?([a-fA-F\d]{2})([a-fA-F\d]{2})([a-fA-F\d]{2})$").unwrap();
@@ -27,6 +30,39 @@ impl Color {
         let red = u64::from_str_radix(&raw_colors[1], 16).ok()?;
         let green = u64::from_str_radix(&raw_colors[2], 16).ok()?;
         let blue = u64::from_str_radix(&raw_colors[3], 16).ok()?;
+        Some(Color {
+            r: red as u8,
+            g: green as u8,
+            b: blue as u8,
+        })
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn from_hex(hex: &str) -> Option<Color> {
+        let hex_re: js_sys::RegExp = js_sys::RegExp::new(r"^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$", "i");
+        let hex_string = js_sys::JsString::from(hex);
+        let raw_colors = wasm_bindgen::JsCast::unchecked_into::<js_sys::Array>(hex_string.match_(&hex_re)?);
+        let red = u64::from_str_radix(
+            &String::from(wasm_bindgen::JsCast::unchecked_into::<js_sys::JsString>(
+                raw_colors.get(1),
+            )),
+            16,
+        )
+        .ok()?;
+        let green = u64::from_str_radix(
+            &String::from(wasm_bindgen::JsCast::unchecked_into::<js_sys::JsString>(
+                raw_colors.get(2),
+            )),
+            16,
+        )
+        .ok()?;
+        let blue = u64::from_str_radix(
+            &&String::from(wasm_bindgen::JsCast::unchecked_into::<js_sys::JsString>(
+                raw_colors.get(3),
+            )),
+            16,
+        )
+        .ok()?;
         Some(Color {
             r: red as u8,
             g: green as u8,
