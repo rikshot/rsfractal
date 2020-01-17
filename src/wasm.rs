@@ -161,10 +161,16 @@ fn update(msg: Msg, model: &mut Model, _: &mut impl Orders<Msg>) {
             let target = &ev.target().unwrap();
             let element = to_html_el(target);
             if element.id() == "canvas" {
+                ev.prevent_default();
                 let rect = element.get_bounding_client_rect();
                 let x = ev.client_x() as f64 - rect.left();
                 let y = ev.client_y() as f64 - rect.top();
-                zoom(&mut model.config, x, y, rect.width(), rect.height(), model.zoom_factor);
+                let zoom_factor = if ev.ctrl_key() {
+                    1.0 / model.zoom_factor
+                } else {
+                    model.zoom_factor
+                };
+                zoom(&mut model.config, x, y, rect.width(), rect.height(), zoom_factor);
                 render(model);
             }
         }
