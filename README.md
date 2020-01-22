@@ -2,7 +2,7 @@
 
 Explore the mandelbrot set in your browser using Rust, WebAssembly and WebWorkers. 
 
-Demo available at [rikshot.github.io/rsfractal](). 
+Demo available at [rikshot.github.io/rsfractal](https://rikshot.github.io/rsfractal). 
 
 Currently works out-of-the-box only on latest Chromium based browsers on desktop. Mobile Chrome works when you enable WebAssembly threads support under `chrome://flags`
 
