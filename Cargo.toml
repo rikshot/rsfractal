@@ -7,6 +7,7 @@ edition = "2018"
 publish = false
 homepage = "https://rikshot.github.io/rsfractal"
 repository = "https://github.com/rikshot/rsfractal"
+license = "MIT"
 
 [dependencies]
 num-complex = "*"
