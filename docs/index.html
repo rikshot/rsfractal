@@ -18,13 +18,12 @@
         <section class="section">
             <div class="container">
                 <h1 class="title is-1">Rusty Fractals</h1>
+                <h4 class="subtitle is-4">Click to zoom in, Ctrl+click to zoom out</h4>
                 <canvas id="canvas" width="1280" height="720"></canvas>
             </div>
         </section>
         <section id="app" class="section"></section>
         <script src="./rsfractal.js"></script>
-        <script>
-            wasm_bindgen('./rsfractal_bg.wasm');
-        </script>
+        <script>wasm_bindgen('./rsfractal_bg.wasm')</script>
     </body>
 </html>
