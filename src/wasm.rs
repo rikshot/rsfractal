@@ -12,9 +12,10 @@ use futures::channel::oneshot;
 #[derive(Clone)]
 pub struct Model {
     pub config: Config,
-    pub zoom_factor: f64,
-    pub concurrency: usize,
+    zoom_factor: f64,
+    concurrency: usize,
     worker_pool: super::pool::WorkerPool,
+    pub rendering: bool,
 }
 
 impl Default for Model {
@@ -29,6 +30,7 @@ impl Default for Model {
             zoom_factor: 0.25,
             concurrency,
             worker_pool,
+            rendering: false,
         }
     }
 }
@@ -36,6 +38,7 @@ impl Default for Model {
 #[derive(Clone)]
 pub enum Msg {
     Render,
+    RenderDone,
     Reset,
     Click(web_sys::MouseEvent),
     ChangeIterations(String),
@@ -47,7 +50,9 @@ async fn progressive_render(model: &Model) {
     while i < model.config.iterations {
         let mut model = model.clone();
         model.config.iterations = i;
-        wasm_bindgen_futures::JsFuture::from(render(&model).unwrap()).await;
+        wasm_bindgen_futures::JsFuture::from(render(&model).unwrap())
+            .await
+            .unwrap();
         i *= 2;
     }
 }
@@ -158,31 +163,45 @@ fn zoom(config: &mut Config, x: f64, y: f64, width: f64, height: f64, zoom_facto
     };
 }
 
-fn update(msg: Msg, model: &mut Model, _: &mut impl Orders<Msg>) {
+fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
     match msg {
         Msg::Render => {
-            render(model);
+            if !model.rendering {
+                model.rendering = true;
+                let model = model.clone();
+                orders.perform_cmd(async move {
+                    progressive_render(&model).await;
+                    Ok(Msg::RenderDone)
+                });
+            }
+        }
+        Msg::RenderDone => {
+            model.rendering = false;
         }
         Msg::Reset => {
             model.config = Config::default();
-            render(model);
+            orders.send_msg(Msg::Render);
         }
         Msg::Click(ev) => {
             let target = &ev.target().unwrap();
             let element = to_html_el(target);
-            if element.id() == "canvas" {
+            if element.id() == "canvas" && !model.rendering {
+                ev.prevent_default();
                 let rect = element.get_bounding_client_rect();
                 let x = ev.client_x() as f64 - rect.left();
                 let y = ev.client_y() as f64 - rect.top();
-                zoom(&mut model.config, x, y, rect.width(), rect.height(), model.zoom_factor);
-                let model = model.clone();
-                wasm_bindgen_futures::spawn_local(async move {
-                    progressive_render(&model).await;
-                });
+                let zoom_factor = if ev.ctrl_key() {
+                    1.0 / model.zoom_factor
+                } else {
+                    model.zoom_factor
+                };
+                zoom(&mut model.config, x, y, rect.width(), rect.height(), zoom_factor);
+                orders.send_msg(Msg::Render);
             }
+            orders.skip();
         }
         Msg::ChangeIterations(input) => {
-            model.config.iterations = input.parse::<usize>().unwrap_or(Config::default().iterations)
+            model.config.iterations = input.parse::<usize>().unwrap_or(Config::default().iterations);
         }
         Msg::ChangeColors(input) => {
             let colors: Vec<&str> = input.split(",").collect();
@@ -200,9 +219,9 @@ fn window_events(_model: &Model) -> Vec<seed::virtual_dom::Listener<Msg>> {
     listeners
 }
 
-fn after_mount(_: Url, _: &mut impl Orders<Msg>) -> AfterMount<Model> {
+fn after_mount(_: Url, orders: &mut impl Orders<Msg>) -> AfterMount<Model> {
     let model = Model::default();
-    render(&model);
+    orders.send_msg(Msg::Render);
     AfterMount::new(model)
 }
 

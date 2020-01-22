@@ -170,13 +170,21 @@ pub fn view(model: &Model) -> impl View<Msg> {
                         class!["control"],
                         button![
                             class!["button", "is-primary"],
+                            attrs! {
+                                At::Disabled => model.rendering.as_at_value()
+                            },
                             simple_ev(Ev::Click, Msg::Render),
                             "Render"
                         ]
                     ],
                     div![
                         class!["control"],
-                        button![class!["button"], simple_ev(Ev::Click, Msg::Reset), "Reset"],
+                        button![
+                            class!["button"],
+                            attrs! { At::Disabled => model.rendering.as_at_value() },
+                            simple_ev(Ev::Click, Msg::Reset),
+                            "Reset"
+                        ],
                     ]
                 ]
             ]

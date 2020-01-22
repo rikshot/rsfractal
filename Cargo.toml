@@ -1,8 +1,13 @@
 [package]
 name = "rsfractal"
+description = "Rusty fractals with WebAssembly"
 version = "0.1.0"
 authors = ["Ville Orkas <ville@orkas.fi>"]
 edition = "2018"
+publish = false
+homepage = "https://rikshot.github.io/rsfractal"
+repository = "https://github.com/rikshot/rsfractal"
+license = "MIT"
 
 [dependencies]
 num-complex = "*"

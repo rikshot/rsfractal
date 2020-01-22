@@ -22,7 +22,7 @@ pub struct Config {
 
 impl Default for Config {
     fn default() -> Self {
-        let palette = ["#3e0000", "#6b1d09", "#9a542e", "#bf935c", "#d0c8a8"];
+        let palette = ["#3e0000", "#6b1d09", "#9a542e", "#bf935c", "#d0c8a8"].repeat(2);
         let palette: Vec<Color> = palette.iter().map(|hex| Color::from_hex(hex).unwrap()).collect();
 
         Self {
