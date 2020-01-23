@@ -1,9 +1,9 @@
 #[cfg(not(target_arch = "wasm32"))]
 use regex::Regex;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Color {
     pub r: u8,
     pub g: u8,

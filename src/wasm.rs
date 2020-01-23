@@ -38,11 +38,13 @@ impl Default for Model {
 #[derive(Clone)]
 pub enum Msg {
     Render,
+    ParseConfig(String),
     RenderDone,
     Reset,
     Click(web_sys::MouseEvent),
     ChangeIterations(String),
     ChangeColors(String),
+    Export,
 }
 
 async fn progressive_render(model: &Model) {
@@ -163,6 +165,11 @@ fn zoom(config: &mut Config, x: f64, y: f64, width: f64, height: f64, zoom_facto
     };
 }
 
+fn parse_config(raw_config: String) -> Option<Config> {
+    let decoded = base64::decode(&raw_config).ok()?;
+    rmp_serde::from_read_ref(&decoded).ok()?
+}
+
 fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
     match msg {
         Msg::Render => {
@@ -174,6 +181,11 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
                     Ok(Msg::RenderDone)
                 });
             }
+        }
+        Msg::ParseConfig(raw_config) => {
+            let config = parse_config(raw_config);
+            model.config = config.unwrap_or(Config::default());
+            orders.send_msg(Msg::Render);
         }
         Msg::RenderDone => {
             model.rendering = false;
@@ -190,7 +202,7 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
                 let rect = element.get_bounding_client_rect();
                 let x = ev.client_x() as f64 - rect.left();
                 let y = ev.client_y() as f64 - rect.top();
-                let zoom_factor = if ev.ctrl_key() {
+                let zoom_factor = if ev.shift_key() {
                     1.0 / model.zoom_factor
                 } else {
                     model.zoom_factor
@@ -210,6 +222,12 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
                 model.config.palette = Config::default().palette;
             }
         }
+        Msg::Export => {
+            let buffer = rmp_serde::to_vec(&model.config).unwrap();
+            let encoded = base64::encode(&buffer);
+            seed::push_route(seed::browser::url::current().hash(&encoded));
+            orders.skip();
+        }
     }
 }
 
@@ -219,17 +237,19 @@ fn window_events(_model: &Model) -> Vec<seed::virtual_dom::Listener<Msg>> {
     listeners
 }
 
-fn after_mount(_: Url, orders: &mut impl Orders<Msg>) -> AfterMount<Model> {
-    let model = Model::default();
-    orders.send_msg(Msg::Render);
-    AfterMount::new(model)
+fn routes(url: Url) -> Option<Msg> {
+    if url.hash.is_none() {
+        Some(Msg::Render)
+    } else {
+        Some(Msg::ParseConfig(url.hash.unwrap()))
+    }
 }
 
 #[wasm_bindgen(start)]
 pub fn main() {
     if js_sys::global().has_type::<web_sys::Window>() {
         App::builder(update, super::ui::view)
-            .after_mount(after_mount)
+            .routes(routes)
             .window_events(window_events)
             .build_and_start();
     }

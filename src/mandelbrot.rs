@@ -2,21 +2,25 @@ use num_complex::Complex;
 use num_traits::Num;
 use num_traits::Zero;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use super::color::Color;
 use super::range::Range;
 use super::rectangle::Rectangle;
 use super::vector::Vector;
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Config {
+    #[serde(skip)]
     pub width: u32,
+    #[serde(skip)]
     pub height: u32,
     pub position: Vector<f64>,
     pub zoom: Vector<f64>,
     pub iterations: usize,
     pub palette: Vec<Color>,
+    #[serde(skip)]
     pub chunk_size: Option<u32>,
 }
 

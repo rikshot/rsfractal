@@ -185,6 +185,10 @@ pub fn view(model: &Model) -> impl View<Msg> {
                             simple_ev(Ev::Click, Msg::Reset),
                             "Reset"
                         ],
+                    ],
+                    div![
+                        class!["control"],
+                        button![class!["button"], simple_ev(Ev::Click, Msg::Export), "Export"],
                     ]
                 ]
             ]
