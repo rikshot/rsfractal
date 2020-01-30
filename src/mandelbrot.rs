@@ -114,7 +114,7 @@ fn gradient(config: &Config, hue1: f64, hue2: f64, n: f64) -> Color {
     let length = (config.palette.len() - 1) as f64;
     let color1 = &config.palette[f64::round(hue1 * length) as usize];
     let color2 = &config.palette[f64::round(hue2 * length) as usize];
-    Color::lerp(color1, color2, n)
+    Color::lerp_hsv(color1, color2, n)
 }
 
 pub fn color(
