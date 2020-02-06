@@ -4,7 +4,7 @@ use super::range::*;
 use super::vector::*;
 
 use rayon::prelude::*;
-use seed::{prelude::*, *};
+use seed::prelude::*;
 use wasm_bindgen::JsCast;
 
 use futures::channel::oneshot;
@@ -60,8 +60,8 @@ async fn progressive_render(model: &Model) {
 }
 
 fn render(model: &Model) -> Option<js_sys::Promise> {
-    let canvas = canvas("canvas")?;
-    let context = canvas_context_2d(&canvas);
+    let canvas = seed::canvas("canvas")?;
+    let context = seed::canvas_context_2d(&canvas);
 
     let config = model.config.clone();
     let width = config.width;
@@ -130,7 +130,7 @@ fn render(model: &Model) -> Option<js_sys::Promise> {
         context
             .put_image_data(&image_data.unchecked_into::<web_sys::ImageData>(), 0.0, 0.0)
             .unwrap();
-        log![format!("Rendering took: {}ms", duration)];
+        seed::log![format!("Rendering took: {}ms", duration)];
         Ok(JsValue::UNDEFINED)
     }))
 }
@@ -196,7 +196,7 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
         }
         Msg::Click(ev) => {
             let target = &ev.target().unwrap();
-            let element = to_html_el(target);
+            let element = seed::to_html_el(target);
             if element.id() == "canvas" && !model.rendering {
                 ev.prevent_default();
                 let rect = element.get_bounding_client_rect();
@@ -231,7 +231,7 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
     }
 }
 
-fn window_events(_model: &Model) -> Vec<seed::virtual_dom::Listener<Msg>> {
+fn window_events(_model: &Model) -> Vec<EventHandler<Msg>> {
     let mut listeners = Vec::new();
     listeners.push(mouse_ev("click", |ev| Msg::Click(ev)));
     listeners
