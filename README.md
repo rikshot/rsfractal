@@ -2,9 +2,9 @@
 
 Explore the mandelbrot set in your browser using Rust, WebAssembly and WebWorkers. 
 
-Demo available at [rikshot.github.io/rsfractal](https://rikshot.github.io/rsfractal). 
+Demo available at [https://rsfractal.herokuapp.com/](https://rsfractal.herokuapp.com/). 
 
-Currently works out-of-the-box only on latest Chromium based browsers on desktop. Mobile Chrome works when you enable WebAssembly threads support under `chrome://flags`
+Currently works out-of-the-box only on latest Chromium based browsers on desktop. Mobile Chrome works when you enable WebAssembly threads and SIMD support under `chrome://flags`. Latest Firefox works on desktop if you enable WebAssembly SIMD support under `about:config`. Mobile Firefox does not seem to work currently (26.2.2020)
 
 ### Prerequisites
 
