@@ -1,65 +1,9 @@
-[package]
-name = "rsfractal"
-description = "Rusty fractals with WebAssembly"
-version = "0.1.0"
-authors = ["Ville Orkas <ville@orkas.fi>"]
-edition = "2018"
-publish = false
-homepage = "https://rikshot.github.io/rsfractal"
-repository = "https://github.com/rikshot/rsfractal"
-license = "MIT"
-
-[dependencies]
-num-complex = "*"
-num-traits = "*"
-serde = { version = "*", features = ["derive"] }
-rmp-serde = "*"
-base64 = "*"
-rayon = "*"
-
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-regex = "*"
-lazy_static = "*"
-
-[target.wasm32-unknown-unknown.dependencies]
-seed = "*"
-wasm-bindgen = "*"
-wasm-bindgen-futures = "*"
-js-sys = "*"
-futures = "*"
-
-[target.wasm32-unknown-unknown.dependencies.web-sys]
-version = "*"
-features = [
-    "DomRect",
-    "DomRectReadOnly",
-    "DedicatedWorkerGlobalScope",
-    "WorkerGlobalScope",
-    "WorkerLocation",
-    "MessageEvent",
-    "ErrorEvent",
-    "Event",
-    "Worker",
-    "Url",
-    "Blob",
-    "BlobPropertyBag",
-    "Navigator",
-    "ImageData",
-    "Performance"
-]
-
-[dev-dependencies]
-image = "*"
-serde_json = "*"
-
-[lib]
-crate-type = ["rlib", "cdylib"]
-
-[[example]]
-name = "main"
+[workspace]
+members = ["mandelbrot", "server", "wasm"]
+default-members = ["server"]
 
 [profile.release]
-lto = true
+lto = "fat"
+codegen-units = 1
 opt-level = 3
-debug = true
 panic = "abort"

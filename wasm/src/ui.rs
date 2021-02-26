@@ -2,21 +2,21 @@ use seed::{prelude::*, *};
 
 use super::wasm::{Model, Msg};
 
-pub fn view(model: &Model) -> impl View<Msg> {
+pub fn view(model: &Model) -> Node<Msg> {
     div![
-        class!["container"],
-        h2![class!["title", "is-2"], "Controls"],
+        C!["container"],
+        h2![C!["title", "is-2"], "Controls"],
         div![
-            class!["field", "is-horizontal"],
-            div![class!["field-label", "is-normal"], label![class!["label"], "Size"]],
+            C!["field", "is-horizontal"],
+            div![C!["field-label", "is-normal"], label![C!["label"], "Size"]],
             div![
-                class!["field-body"],
+                C!["field-body"],
                 div![
-                    class!["field"],
+                    C!["field"],
                     p![
-                        class!["control", "is-expanded"],
+                        C!["control", "is-expanded"],
                         input![
-                            class!["input"],
+                            C!["input"],
                             attrs! {
                                 At::Type => "text",
                                 At::Disabled => "disabled",
@@ -26,11 +26,11 @@ pub fn view(model: &Model) -> impl View<Msg> {
                     ]
                 ],
                 div![
-                    class!["field"],
+                    C!["field"],
                     p![
-                        class!["control", "is-expanded"],
+                        C!["control", "is-expanded"],
                         input![
-                            class!["input"],
+                            C!["input"],
                             attrs! {
                                 At::Type => "text",
                                 At::Disabled => "disabled",
@@ -42,16 +42,16 @@ pub fn view(model: &Model) -> impl View<Msg> {
             ]
         ],
         div![
-            class!["field", "is-horizontal"],
-            div![class!["field-label", "is-normal"], label![class!["label"], "Position"]],
+            C!["field", "is-horizontal"],
+            div![C!["field-label", "is-normal"], label![C!["label"], "Position"]],
             div![
-                class!["field-body"],
+                C!["field-body"],
                 div![
-                    class!["field"],
+                    C!["field"],
                     p![
-                        class!["control", "is-expanded"],
+                        C!["control", "is-expanded"],
                         input![
-                            class!["input"],
+                            C!["input"],
                             attrs! {
                                 At::Type => "text",
                                 At::Disabled => "disabled",
@@ -61,11 +61,11 @@ pub fn view(model: &Model) -> impl View<Msg> {
                     ]
                 ],
                 div![
-                    class!["field"],
+                    C!["field"],
                     p![
-                        class!["control", "is-expanded"],
+                        C!["control", "is-expanded"],
                         input![
-                            class!["input"],
+                            C!["input"],
                             attrs! {
                                 At::Type => "text",
                                 At::Disabled => "disabled",
@@ -77,16 +77,16 @@ pub fn view(model: &Model) -> impl View<Msg> {
             ]
         ],
         div![
-            class!["field", "is-horizontal"],
-            div![class!["field-label", "is-normal"], label![class!["label"], "Zoom"]],
+            C!["field", "is-horizontal"],
+            div![C!["field-label", "is-normal"], label![C!["label"], "Zoom"]],
             div![
-                class!["field-body"],
+                C!["field-body"],
                 div![
-                    class!["field"],
+                    C!["field"],
                     p![
-                        class!["control", "is-expanded"],
+                        C!["control", "is-expanded"],
                         input![
-                            class!["input"],
+                            C!["input"],
                             attrs! {
                                 At::Type => "text",
                                 At::Disabled => "disabled",
@@ -96,11 +96,11 @@ pub fn view(model: &Model) -> impl View<Msg> {
                     ]
                 ],
                 div![
-                    class!["field"],
+                    C!["field"],
                     p![
-                        class!["control", "is-expanded"],
+                        C!["control", "is-expanded"],
                         input![
-                            class!["input"],
+                            C!["input"],
                             attrs! {
                                 At::Type => "text",
                                 At::Disabled => "disabled",
@@ -112,19 +112,19 @@ pub fn view(model: &Model) -> impl View<Msg> {
             ]
         ],
         div![
-            class!["field", "is-horizontal"],
+            C!["field", "is-horizontal"],
             div![
-                class!["field-label", "is-normal"],
-                label![class!["label"], "Iterations"]
+                C!["field-label", "is-normal"],
+                label![C!["label"], "Iterations"]
             ],
             div![
-                class!["field-body"],
+                C!["field-body"],
                 div![
-                    class!["field"],
+                    C!["field"],
                     p![
-                        class!["control", "is-expanded"],
+                        C!["control", "is-expanded"],
                         input![
-                            class!["input"],
+                            C!["input"],
                             attrs! {
                                 At::Type => "text",
                                 At::Value => model.config.iterations.to_string()
@@ -136,16 +136,16 @@ pub fn view(model: &Model) -> impl View<Msg> {
             ]
         ],
         div![
-            class!["field", "is-horizontal"],
-            div![class!["field-label", "is-normal"], label![class!["label"], "Colors"]],
+            C!["field", "is-horizontal"],
+            div![C!["field-label", "is-normal"], label![C!["label"], "Colors"]],
             div![
-                class!["field-body"],
+                C!["field-body"],
                 div![
-                    class!["field"],
+                    C!["field"],
                     p![
-                        class!["control", "is-expanded"],
+                        C!["control", "is-expanded"],
                         input![
-                            class!["input"],
+                            C!["input"],
                             attrs! {
                                 At::Type => "text",
                                 At::Value => {
@@ -160,35 +160,35 @@ pub fn view(model: &Model) -> impl View<Msg> {
             ]
         ],
         div![
-            class!["field", "is-horizontal"],
-            div![class!["field-label"]],
+            C!["field", "is-horizontal"],
+            div![C!["field-label"]],
             div![
-                class!["field-body"],
+                C!["field-body"],
                 div![
-                    class!["field", "is-grouped"],
+                    C!["field", "is-grouped"],
                     div![
-                        class!["control"],
+                        C!["control"],
                         button![
-                            class!["button", "is-primary"],
+                            C!["button", "is-primary"],
                             attrs! {
                                 At::Disabled => model.rendering.as_at_value()
                             },
-                            simple_ev(Ev::Click, Msg::Render),
+                            ev(Ev::Click, |_| Msg::Render),
                             "Render"
                         ]
                     ],
                     div![
-                        class!["control"],
+                        C!["control"],
                         button![
-                            class!["button"],
+                            C!["button"],
                             attrs! { At::Disabled => model.rendering.as_at_value() },
-                            simple_ev(Ev::Click, Msg::Reset),
+                            ev(Ev::Click, |_| Msg::Reset),
                             "Reset"
                         ],
                     ],
                     div![
-                        class!["control"],
-                        button![class!["button"], simple_ev(Ev::Click, Msg::Export), "Export"],
+                        C!["control"],
+                        button![C!["button"], ev(Ev::Click, |_| Msg::Export), "Export"],
                     ]
                 ]
             ]

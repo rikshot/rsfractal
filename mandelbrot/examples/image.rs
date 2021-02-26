@@ -1,6 +1,6 @@
 use rayon::prelude::*;
 
-use rsfractal::mandelbrot;
+use rsfractal_mandelbrot::mandelbrot;
 
 fn render(config: &mandelbrot::Config) -> image::RgbImage {
     let chunks = mandelbrot::chunkify(&config);

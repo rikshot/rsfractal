@@ -1,7 +1,7 @@
-use super::color::*;
-use super::mandelbrot::*;
-use super::range::*;
-use super::vector::*;
+use rsfractal_mandelbrot::color::*;
+use rsfractal_mandelbrot::mandelbrot::*;
+use rsfractal_mandelbrot::range::*;
+use rsfractal_mandelbrot::vector::*;
 
 use rayon::prelude::*;
 use seed::prelude::*;
@@ -45,6 +45,7 @@ pub enum Msg {
     ChangeIterations(String),
     ChangeColors(String),
     Export,
+    UrlChanged(seed::app::subs::UrlChanged)
 }
 
 async fn progressive_render(model: &Model) {
@@ -178,7 +179,7 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
                 let model = model.clone();
                 orders.perform_cmd(async move {
                     progressive_render(&model).await;
-                    Ok(Msg::RenderDone)
+                    Msg::RenderDone
                 });
             }
         }
@@ -192,7 +193,9 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
         }
         Msg::Reset => {
             model.config = Config::default();
-            orders.send_msg(Msg::Render);
+            let mut url = seed::browser::url::Url::current();
+            url = url.set_hash("");
+            orders.request_url(url);
         }
         Msg::Click(ev) => {
             let target = &ev.target().unwrap();
@@ -225,32 +228,31 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
         Msg::Export => {
             let buffer = rmp_serde::to_vec(&model.config).unwrap();
             let encoded = base64::encode(&buffer);
-            seed::push_route(seed::browser::url::current().hash(&encoded));
+            let mut url = seed::browser::url::Url::current();
+            url = url.set_hash_path(&[&encoded]);
+            url.go_and_replace();
             orders.skip();
+        }
+        Msg::UrlChanged(subs::UrlChanged(url)) => {
+            if url.hash().is_none() {
+                orders.send_msg(Msg::Render);
+            } else {
+                orders.send_msg(Msg::ParseConfig(url.hash().unwrap().to_string()));
+            }
         }
     }
 }
 
-fn window_events(_model: &Model) -> Vec<EventHandler<Msg>> {
-    let mut listeners = Vec::new();
-    listeners.push(mouse_ev("click", |ev| Msg::Click(ev)));
-    listeners
-}
-
-fn routes(url: Url) -> Option<Msg> {
-    if url.hash.is_none() {
-        Some(Msg::Render)
-    } else {
-        Some(Msg::ParseConfig(url.hash.unwrap()))
-    }
+fn init(url: Url, orders: &mut impl Orders<Msg>) -> Model {
+    orders.subscribe(Msg::UrlChanged);
+    orders.stream(seed::app::streams::window_event(Ev::Click, |ev| Msg::Click(ev.unchecked_into())));
+    orders.send_msg(Msg::UrlChanged(subs::UrlChanged(url)));
+    Model::default()
 }
 
 #[wasm_bindgen(start)]
 pub fn main() {
     if js_sys::global().has_type::<web_sys::Window>() {
-        App::builder(update, super::ui::view)
-            .routes(routes)
-            .window_events(window_events)
-            .build_and_start();
+        App::start("app", init, update, super::ui::view);
     }
 }

@@ -1,12 +1,13 @@
 [env]
-PORT = "8000"
+CARGO_MAKE_WORKSPACE_SKIP_MEMBERS = ["mandelbrot", "server"]
+CARGO_MAKE_EXTEND_WORKSPACE_MAKEFILE = true
 
 [config]
 skip_core_tasks = true
 
 [tasks.debug]
 description = "Build debug"
-env = { RUSTFLAGS = "-C target-feature=+atomics,+bulk-memory" }
+env = { RUSTFLAGS = "-C target-feature=+atomics,+bulk-memory,+simd128,+unimplemented-simd128" }
 command = "cargo"
 args = ["build", "--target", "wasm32-unknown-unknown", "-Z", "build-std=std,panic_abort"]
 
@@ -14,34 +15,34 @@ args = ["build", "--target", "wasm32-unknown-unknown", "-Z", "build-std=std,pani
 description = "Generate debug wrapper"
 dependencies = ["debug"]
 command = "wasm-bindgen"
-args = ["target/wasm32-unknown-unknown/debug/rsfractal.wasm", "--out-dir", "docs", "--no-modules", "--no-typescript"]
+args = ["../target/wasm32-unknown-unknown/debug/rsfractal_wasm.wasm", "--debug", "--keep-debug", "--out-dir", "../docs", "--no-modules", "--no-typescript", "--weak-refs"]
 
 [tasks.release]
 description = "Build release"
-env = { RUSTFLAGS = "-C target-feature=+atomics,+bulk-memory" }
+env = { RUSTFLAGS = "-C target-feature=+atomics,+bulk-memory,+simd128,+unimplemented-simd128" }
 command = "cargo"
 args = ["build", "--target", "wasm32-unknown-unknown", "-Z", "build-std=std,panic_abort", "--release"]
 
 [tasks.release-wasm]
 description = "Generate release wrapper"
 command = "wasm-bindgen"
-args = ["target/wasm32-unknown-unknown/release/rsfractal.wasm", "--out-dir", "docs", "--no-modules", "--no-typescript"]
+args = ["../target/wasm32-unknown-unknown/release/rsfractal_wasm.wasm", "--out-dir", "../docs", "--no-modules", "--no-typescript", "--weak-refs"]
 
 [tasks.fix-wrapper]
 description = "Fix missing typeof check for Window when running inside a Worker"
-script = ["sed -i 's/getObject(arg0) instanceof Window/typeof Window !== \"undefined\" \\&\\& getObject(arg0) instanceof Window/' docs/rsfractal.js"]
+script = ["sed -i 's/getObject(arg0) instanceof Window/typeof Window !== \"undefined\" \\&\\& getObject(arg0) instanceof Window/' ../docs/rsfractal_wasm.js"]
 
 [tasks.optimize-wasm]
 description = "Optimize release WASM with wasm-opt"
 dependencies = ["release"]
 command = "wasm-opt"
-args = ["-O4", "docs/rsfractal_bg.wasm", "-o", "docs/rsfractal_bg.wasm"]
+args = ["../docs/rsfractal_wasm_bg.wasm", "-o", "../docs/rsfractal_wasm_bg.wasm", "-O4", "--fast-math"]
 
 [tasks.optimize-js]
 description = "Optimize release JS with terser"
 dependencies = ["release-wasm"]
 command = "terser"
-args = ["-c", "-m", "-o", "docs/rsfractal.js", "docs/rsfractal.js"]
+args = ["-c", "-m", "-o", "../docs/rsfractal_wasm.js", "../docs/rsfractal_wasm.js"]
 
 [tasks.publish]
 description = "Publish with optimizations"
@@ -49,18 +50,15 @@ dependencies = ["release", "release-wasm", "fix-wrapper", "optimize-wasm", "opti
 
 [tasks.watch]
 description = "Build, create wasms, and watch/recompile files for changes"
-workspace = false
 dependencies = ["debug", "debug-wasm", "fix-wrapper"]
-watch = { ignore_pattern="docs/*" }
+watch = { ignore_pattern="../docs/*" }
 
 [tasks.serve]
 description = "Start server"
-install_crate = { crate_name = "microserver", binary = "microserver", test_arg = "-h" }
-workspace = false
-command = "microserver"
-args = ["--port", "${PORT}"]
+env = { RUST_LOG = "info" }
+command = "cargo"
+args = ["run", "--release"]
 
 [tasks.start]
 description = "Combine the build and serve tasks"
-workspace = false
 dependencies = ["debug", "debug-wasm", "fix-wrapper", "serve"]
