@@ -1,6 +1,6 @@
 [workspace]
-members = ["mandelbrot", "server", "wasm"]
-default-members = ["server"]
+members = ["mandelbrot", "wasm"]
+default-members = ["mandelbrot"]
 
 [profile.release]
 lto = "fat"

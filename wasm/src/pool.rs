@@ -75,7 +75,7 @@ impl WorkerPool {
         let pathname = location.pathname();
         let path_split: Vec<&str> = pathname.rsplitn(2, '/').collect();
         let root = path_split[1];
-        let wrapper_url = format!("{}{}/docs/rsfractal_wasm.js", origin, root);
+        let wrapper_url = format!("{}{}/rsfractal_wasm.js", origin, root);
         let worker_content = format!("importScripts(\"{}\"),self.onmessage=(a=>{{let e=wasm_bindgen(...a.data).catch(a=>{{throw setTimeout(()=>{{throw a}}),a}});self.onmessage=(async a=>{{await e,wasm_bindgen.child_entry_point(a.data)}})}});", wrapper_url);
         let mut worker_blob_property_bag = BlobPropertyBag::new();
         worker_blob_property_bag.type_("text/javascript");

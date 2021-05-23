@@ -1,1 +1,1 @@
-web: ./target/release/rsfractal-server
+web: bin/start-nginx-solo
