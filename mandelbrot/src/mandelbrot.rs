@@ -130,8 +130,8 @@ pub fn color(
         let iteration = f64::floor(result.iterations[index]);
         if iteration < config.iterations as f64 {
             let mut hue = 0.0;
-            for i in 0..iteration as usize {
-                hue += histogram[i] as f64 / total as f64;
+            for i in histogram.iter().take(iteration as usize) {
+                hue += *i as f64 / total as f64;
             }
             let color = gradient(
                 config,

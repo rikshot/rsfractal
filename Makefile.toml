@@ -1,5 +1,5 @@
 [env]
-CARGO_MAKE_WORKSPACE_SKIP_MEMBERS = ["mandelbrot", "server"]
+CARGO_MAKE_WORKSPACE_SKIP_MEMBERS = ["mandelbrot"]
 CARGO_MAKE_EXTEND_WORKSPACE_MAKEFILE = true
 
 [config]
@@ -30,13 +30,19 @@ args = ["../target/wasm32-unknown-unknown/release/rsfractal_wasm.wasm", "--out-d
 
 [tasks.fix-wrapper]
 description = "Fix missing typeof check for Window when running inside a Worker"
-script = ["sed -i 's/getObject(arg0) instanceof Window/typeof Window !== \"undefined\" \\&\\& getObject(arg0) instanceof Window/' ../docs/rsfractal_wasm.js"]
+script = ["sed -i '' -e 's/getObject(arg0) instanceof Window/typeof Window !== \"undefined\" \\&\\& getObject(arg0) instanceof Window/' ../docs/rsfractal_wasm.js"]
 
 [tasks.optimize-wasm]
 description = "Optimize release WASM with wasm-opt"
-dependencies = ["release"]
+dependencies = ["release-wasm"]
 command = "wasm-opt"
 args = ["../docs/rsfractal_wasm_bg.wasm", "-o", "../docs/rsfractal_wasm_bg.wasm", "-O4", "--fast-math"]
+
+[tasks.precompress-wasm]
+description = "Precompress release WASM with gzip"
+dependencies = ["release-wasm"]
+command = "gzip"
+args = ["--best", "--keep", "--force", "../docs/rsfractal_wasm_bg.wasm"]
 
 [tasks.optimize-js]
 description = "Optimize release JS with terser"
@@ -44,9 +50,23 @@ dependencies = ["release-wasm"]
 command = "terser"
 args = ["-c", "-m", "-o", "../docs/rsfractal_wasm.js", "../docs/rsfractal_wasm.js"]
 
+[tasks.precompress-js]
+description = "Precompress release JS with gzip"
+dependencies = ["release-wasm"]
+command = "gzip"
+args = ["--best", "--keep", "--force", "../docs/rsfractal_wasm.js"]
+
 [tasks.publish]
 description = "Publish with optimizations"
-dependencies = ["release", "release-wasm", "fix-wrapper", "optimize-wasm", "optimize-js"]
+dependencies = [
+    "release",
+    "release-wasm",
+    "fix-wrapper",
+    "optimize-wasm",
+    "precompress-wasm",
+    "optimize-js",
+    "precompress-js"
+]
 
 [tasks.watch]
 description = "Build, create wasms, and watch/recompile files for changes"
@@ -55,9 +75,8 @@ watch = { ignore_pattern="../docs/*" }
 
 [tasks.serve]
 description = "Start server"
-env = { RUST_LOG = "info" }
-command = "cargo"
-args = ["run", "--release"]
+command = "nginx"
+args = ["-p", "..", "-c", "config/nginx.local.conf"]
 
 [tasks.start]
 description = "Combine the build and serve tasks"

@@ -113,10 +113,7 @@ pub fn view(model: &Model) -> Node<Msg> {
         ],
         div![
             C!["field", "is-horizontal"],
-            div![
-                C!["field-label", "is-normal"],
-                label![C!["label"], "Iterations"]
-            ],
+            div![C!["field-label", "is-normal"], label![C!["label"], "Iterations"]],
             div![
                 C!["field-body"],
                 div![

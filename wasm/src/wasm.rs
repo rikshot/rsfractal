@@ -45,7 +45,7 @@ pub enum Msg {
     ChangeIterations(String),
     ChangeColors(String),
     Export,
-    UrlChanged(seed::app::subs::UrlChanged)
+    UrlChanged(seed::app::subs::UrlChanged),
 }
 
 async fn progressive_render(model: &Model) {
@@ -74,7 +74,10 @@ fn render(model: &Model) -> Option<js_sys::Promise> {
     let worker_pool = &model.worker_pool;
     let thread_pool = rayon::ThreadPoolBuilder::new()
         .num_threads(model.concurrency)
-        .spawn_handler(|thread| Ok(worker_pool.run(|| thread.run()).unwrap()))
+        .spawn_handler(|thread| {
+            worker_pool.run(|| thread.run()).unwrap();
+            Ok(())
+        })
         .build()
         .unwrap();
 
@@ -86,7 +89,7 @@ fn render(model: &Model) -> Option<js_sys::Promise> {
                 let performance = global.performance().unwrap();
                 let start = performance.now();
                 let chunks = chunkify(&config);
-                let results: Vec<_> = chunks.par_iter().map(|chunk| iterate(&config, &chunk)).collect();
+                let results: Vec<_> = chunks.par_iter().map(|chunk| iterate(&config, chunk)).collect();
                 let (histogram, total) =
                     results
                         .iter()
@@ -104,7 +107,7 @@ fn render(model: &Model) -> Option<js_sys::Promise> {
                 let colors: Vec<_> = chunks
                     .par_iter()
                     .zip(results)
-                    .map(|(chunk, result)| color(&config, &chunk, &result, &histogram, total))
+                    .map(|(chunk, result)| color(&config, chunk, &result, &histogram, total))
                     .collect();
                 chunks.iter().zip(colors).for_each(|(chunk, colors)| {
                     let mut index = 0;
@@ -185,7 +188,7 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
         }
         Msg::ParseConfig(raw_config) => {
             let config = parse_config(raw_config);
-            model.config = config.unwrap_or(Config::default());
+            model.config = config.unwrap_or_default();
             orders.send_msg(Msg::Render);
         }
         Msg::RenderDone => {
@@ -219,7 +222,7 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
             model.config.iterations = input.parse::<usize>().unwrap_or(Config::default().iterations);
         }
         Msg::ChangeColors(input) => {
-            let colors: Vec<&str> = input.split(",").collect();
+            let colors: Vec<&str> = input.split(',').collect();
             model.config.palette = colors.iter().filter_map(|hex| Color::from_hex(hex)).collect();
             if model.config.palette.is_empty() {
                 model.config.palette = Config::default().palette;
@@ -245,7 +248,9 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
 
 fn init(url: Url, orders: &mut impl Orders<Msg>) -> Model {
     orders.subscribe(Msg::UrlChanged);
-    orders.stream(seed::app::streams::window_event(Ev::Click, |ev| Msg::Click(ev.unchecked_into())));
+    orders.stream(seed::app::streams::window_event(Ev::Click, |ev| {
+        Msg::Click(ev.unchecked_into())
+    }));
     orders.send_msg(Msg::UrlChanged(subs::UrlChanged(url)));
     Model::default()
 }

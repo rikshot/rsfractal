@@ -14,7 +14,7 @@ rsfractal-mandelbrot = { path = "../mandelbrot" }
 rayon = "*"
 rmp-serde = "*"
 base64 = "*"
-seed = { git = "https://github.com/seed-rs/seed" }
+seed = { git = "https://github.com/rikshot/seed" }
 wasm-bindgen = "*"
 wasm-bindgen-futures = "*"
 js-sys = "*"

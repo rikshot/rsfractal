@@ -3,10 +3,10 @@ use rayon::prelude::*;
 use rsfractal_mandelbrot::mandelbrot;
 
 fn render(config: &mandelbrot::Config) -> image::RgbImage {
-    let chunks = mandelbrot::chunkify(&config);
+    let chunks = mandelbrot::chunkify(config);
     let results: Vec<_> = chunks
         .par_iter()
-        .map(|chunk| mandelbrot::iterate(&config, &chunk))
+        .map(|chunk| mandelbrot::iterate(config, chunk))
         .collect();
     let (histogram, total) = results
         .iter()
@@ -24,7 +24,7 @@ fn render(config: &mandelbrot::Config) -> image::RgbImage {
     let colors: Vec<_> = chunks
         .par_iter()
         .zip(results)
-        .map(|(chunk, result)| mandelbrot::color(&config, &chunk, &result, &histogram, total))
+        .map(|(chunk, result)| mandelbrot::color(config, chunk, &result, &histogram, total))
         .collect();
     chunks.iter().zip(colors).fold(
         image::RgbImage::new(config.width, config.height),

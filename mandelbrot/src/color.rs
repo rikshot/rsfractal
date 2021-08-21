@@ -57,7 +57,7 @@ impl Color {
         )
         .ok()?;
         let blue = u64::from_str_radix(
-            &&String::from(wasm_bindgen::JsCast::unchecked_into::<js_sys::JsString>(
+            &String::from(wasm_bindgen::JsCast::unchecked_into::<js_sys::JsString>(
                 raw_colors.get(3),
             )),
             16,
