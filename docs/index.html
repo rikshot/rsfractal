@@ -10,6 +10,7 @@
         <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png" />
         <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png" />
         <link rel="manifest" href="site.webmanifest" />
+        <link rel="modulepreload" href="worker.js">
         <style>
             canvas {
                 display: block;
@@ -27,7 +28,9 @@
             </div>
         </section>
         <section id="app" class="section"></section>
-        <script src="rsfractal_wasm.js"></script>
-        <script>wasm_bindgen('rsfractal_wasm_bg.wasm')</script>
+        <script type="module">
+            import init from './rsfractal_wasm.js'
+            await init();
+        </script>
     </body>
 </html>

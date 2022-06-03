@@ -10,9 +10,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
-use web_sys::{Blob, BlobPropertyBag, Url};
 use web_sys::{DedicatedWorkerGlobalScope, MessageEvent};
-use web_sys::{ErrorEvent, Event, Worker};
+use web_sys::{ErrorEvent, Event, Worker, WorkerOptions, WorkerType};
 
 #[wasm_bindgen]
 #[derive(Clone)]
@@ -69,23 +68,9 @@ impl WorkerPool {
     /// Returns any error that may happen while a JS web worker is created and a
     /// message is sent to it.
     fn spawn(&self) -> Result<Worker, JsValue> {
-        let global = js_sys::global().unchecked_into::<DedicatedWorkerGlobalScope>();
-        let location = global.location();
-        let origin = location.origin();
-        let pathname = location.pathname();
-        let path_split: Vec<&str> = pathname.rsplitn(2, '/').collect();
-        let root = path_split[1];
-        let wrapper_url = format!("{}{}/rsfractal_wasm.js", origin, root);
-        let worker_content = format!("importScripts(\"{}\"),self.onmessage=(a=>{{let e=wasm_bindgen(...a.data).catch(a=>{{throw setTimeout(()=>{{throw a}}),a}});self.onmessage=(async a=>{{await e,wasm_bindgen.child_entry_point(a.data)}})}});", wrapper_url);
-        let mut worker_blob_property_bag = BlobPropertyBag::new();
-        worker_blob_property_bag.type_("text/javascript");
-        let worker_blob = Blob::new_with_str_sequence_and_options(
-            &JsValue::from_serde(&vec![worker_content]).unwrap(),
-            &worker_blob_property_bag,
-        )
-        .unwrap();
-        let worker_data_url = Url::create_object_url_with_blob(&worker_blob).unwrap();
-        let worker = Worker::new(&worker_data_url)?;
+        let mut worker_options = WorkerOptions::new();
+        worker_options.type_(WorkerType::Module);
+        let worker = Worker::new_with_options("worker.js", &worker_options)?;
 
         // With a worker spun up send it the module/memory so it can start
         // instantiating the wasm module. Later it might receive further

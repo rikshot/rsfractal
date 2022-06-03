@@ -32,6 +32,8 @@ features = [
     "ErrorEvent",
     "Event",
     "Worker",
+    "WorkerOptions",
+    "WorkerType",
     "Url",
     "Blob",
     "BlobPropertyBag",

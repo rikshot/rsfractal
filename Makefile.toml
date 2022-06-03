@@ -15,7 +15,7 @@ args = ["build", "--target", "wasm32-unknown-unknown", "-Z", "build-std=std,pani
 description = "Generate debug wrapper"
 dependencies = ["debug"]
 command = "wasm-bindgen"
-args = ["../target/wasm32-unknown-unknown/debug/rsfractal_wasm.wasm", "--debug", "--keep-debug", "--out-dir", "../docs", "--no-modules", "--no-typescript", "--weak-refs"]
+args = ["../target/wasm32-unknown-unknown/debug/rsfractal_wasm.wasm", "--debug", "--keep-debug", "--out-dir", "../docs", "--target", "web", "--no-typescript", "--weak-refs", "--reference-types"]
 
 [tasks.release]
 description = "Build release"
@@ -26,17 +26,17 @@ args = ["build", "--target", "wasm32-unknown-unknown", "-Z", "build-std=std,pani
 [tasks.release-wasm]
 description = "Generate release wrapper"
 command = "wasm-bindgen"
-args = ["../target/wasm32-unknown-unknown/release/rsfractal_wasm.wasm", "--out-dir", "../docs", "--no-modules", "--no-typescript", "--weak-refs"]
+args = ["../target/wasm32-unknown-unknown/release/rsfractal_wasm.wasm", "--out-dir", "../docs", "--target", "web", "--no-demangle", "--no-typescript", "--weak-refs", "--reference-types"]
 
 [tasks.fix-wrapper]
 description = "Fix missing typeof check for Window when running inside a Worker"
-script = ["sed -i '' -e 's/getObject(arg0) instanceof Window/typeof Window !== \"undefined\" \\&\\& getObject(arg0) instanceof Window/' ../docs/rsfractal_wasm.js"]
+script = ["sed -i '' -e 's/arg0 instanceof Window/typeof Window !== \"undefined\" \\&\\& arg0 instanceof Window/' ../docs/rsfractal_wasm.js"]
 
 [tasks.optimize-wasm]
 description = "Optimize release WASM with wasm-opt"
 dependencies = ["release-wasm"]
 command = "wasm-opt"
-args = ["../docs/rsfractal_wasm_bg.wasm", "-o", "../docs/rsfractal_wasm_bg.wasm", "-O4", "--fast-math"]
+args = ["../docs/rsfractal_wasm_bg.wasm", "-o", "../docs/rsfractal_wasm_bg.wasm", "-O0", "--all-features", "--fast-math"]
 
 [tasks.precompress-wasm]
 description = "Precompress release WASM with gzip"
