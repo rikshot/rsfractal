@@ -1,5 +1,5 @@
 [env]
-CARGO_MAKE_WORKSPACE_SKIP_MEMBERS = ["mandelbrot"]
+CARGO_MAKE_WORKSPACE_SKIP_MEMBERS = ["mandelbrot", "gui"]
 CARGO_MAKE_EXTEND_WORKSPACE_MAKEFILE = true
 
 [config]

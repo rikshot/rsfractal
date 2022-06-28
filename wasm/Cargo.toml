@@ -3,7 +3,7 @@ name = "rsfractal-wasm"
 description = "Rusty fractals with WebAssembly"
 version = "0.1.0"
 authors = ["Ville Orkas <ville@orkas.fi>"]
-edition = "2018"
+edition = "2021"
 publish = false
 homepage = "https://rikshot.github.io/rsfractal"
 repository = "https://github.com/rikshot/rsfractal"
@@ -14,7 +14,7 @@ rsfractal-mandelbrot = { path = "../mandelbrot" }
 rayon = "*"
 rmp-serde = "*"
 base64 = "*"
-seed = { git = "https://github.com/rikshot/seed" }
+seed = "*"
 wasm-bindgen = "*"
 wasm-bindgen-futures = "*"
 js-sys = "*"

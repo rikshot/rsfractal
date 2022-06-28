@@ -197,7 +197,7 @@ impl PoolState {
         for prev in workers.iter() {
             let prev: &JsValue = prev;
             let worker: &JsValue = &worker;
-            assert!(prev != worker);
+            assert_ne!(prev, worker);
         }
         workers.push(worker);
     }

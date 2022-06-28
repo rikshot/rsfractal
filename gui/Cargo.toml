@@ -1,0 +1,17 @@
+[package]
+name = "rsfractal-gui"
+description = "Rusty fractals with WebAssembly"
+version = "0.1.0"
+authors = ["Ville Orkas <ville@orkas.fi>"]
+edition = "2021"
+publish = false
+homepage = "https://rikshot.github.io/rsfractal"
+repository = "https://github.com/rikshot/rsfractal"
+license = "MIT"
+
+[dependencies]
+rsfractal-mandelbrot = { path = "../mandelbrot" }
+winit = "*"
+pixels = "*"
+rayon = "*"
+num-complex = "*"

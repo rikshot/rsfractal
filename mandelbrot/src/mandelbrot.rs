@@ -18,7 +18,7 @@ pub struct Config {
     pub height: u32,
     pub position: Vector<f64>,
     pub zoom: Vector<f64>,
-    pub iterations: usize,
+    pub iterations: u32,
     pub palette: Vec<Color>,
     #[serde(skip)]
     pub chunk_size: Option<u32>,
@@ -48,7 +48,8 @@ pub struct ChunkConfig {
 }
 
 pub struct ChunkResult {
-    pub iterations: Vec<f64>,
+    pub iterations: Vec<u32>,
+    pub fractional: Vec<Option<f64>>,
     pub histogram: Vec<u32>,
     pub total: u32,
 }
@@ -57,8 +58,9 @@ pub fn iterate(config: &Config, chunk_config: &ChunkConfig) -> ChunkResult {
     let size = (chunk_config.screen.width() * chunk_config.screen.height()) as usize;
     let ln2 = std::f64::consts::LN_2;
 
-    let mut histogram: Vec<u32> = vec![0; config.iterations];
-    let mut iterations: Vec<f64> = vec![0.0; size];
+    let mut histogram: Vec<u32> = vec![0; config.iterations as usize];
+    let mut iterations: Vec<u32> = vec![0; size];
+    let mut fractional: Vec<Option<f64>> = vec![None; size];
 
     let width_range = Range::new(chunk_config.screen.start.x as f64, chunk_config.screen.end.x as f64);
     let height_range = Range::new(chunk_config.screen.start.y as f64, chunk_config.screen.end.y as f64);
@@ -81,7 +83,7 @@ pub fn iterate(config: &Config, chunk_config: &ChunkConfig) -> ChunkResult {
             q += im2;
 
             if q * (q + (c.re - 0.25)) < 0.25 * im2 {
-                iterations[index] = config.iterations as f64;
+                iterations[index] = config.iterations;
             } else {
                 let mut iteration = 0;
                 while z.norm_sqr() < (1 << 16) as f64 && iteration < config.iterations {
@@ -93,10 +95,10 @@ pub fn iterate(config: &Config, chunk_config: &ChunkConfig) -> ChunkResult {
                     z = temp;
                     iteration += 1;
                 }
-                iterations[index] = iteration as f64;
+                iterations[index] = iteration;
                 if iteration < config.iterations {
-                    iterations[index] += 1.0 - f64::ln(f64::ln(z.norm_sqr()) / 2.0 / ln2) / ln2;
-                    histogram[iteration] += 1;
+                    fractional[index] = Some(iteration as f64 + 1.0 - f64::ln(f64::ln(z.norm_sqr()) / 2.0 / ln2) / ln2);
+                    histogram[iteration as usize] += 1;
                     total += 1;
                 }
             }
@@ -105,8 +107,38 @@ pub fn iterate(config: &Config, chunk_config: &ChunkConfig) -> ChunkResult {
     }
     ChunkResult {
         iterations,
+        fractional,
         histogram,
         total,
+    }
+}
+
+pub fn iterate_single(max_iterations: u32, c: &Complex<f64>) -> f64 {
+    let mut z: Complex<f64> = Complex::zero();
+
+    let im2 = c.im * c.im;
+    let mut q = c.re - 0.25;
+    q *= q;
+    q += im2;
+
+    if q * (q + (c.re - 0.25)) < 0.25 * im2 {
+        max_iterations as f64
+    } else {
+        let mut iteration = 0;
+        while z.norm_sqr() < (1 << 16) as f64 && iteration < max_iterations {
+            let temp = z * z + c;
+            if z == temp {
+                return max_iterations as f64;
+            }
+            z = temp;
+            iteration += 1;
+        }
+        if iteration < max_iterations {
+            let log_zn = f64::ln(z.norm_sqr()) / 2.0;
+            let nu = f64::ln(log_zn / std::f64::consts::LN_2) / std::f64::consts::LN_2;
+            return iteration as f64 + 1.0 - nu;
+        }
+        iteration as f64
     }
 }
 
@@ -127,8 +159,8 @@ pub fn color(
     let size = chunk_config.screen.width() * chunk_config.screen.height();
     let mut pixels = Vec::new();
     for index in 0..size as usize {
-        let iteration = f64::floor(result.iterations[index]);
-        if iteration < config.iterations as f64 {
+        if let Some(fractional) = result.fractional[index] {
+            let iteration = result.iterations[index];
             let mut hue = 0.0;
             for i in histogram.iter().take(iteration as usize) {
                 hue += *i as f64 / total as f64;
@@ -137,7 +169,7 @@ pub fn color(
                 config,
                 hue,
                 hue + histogram[iteration as usize] as f64 / total as f64,
-                result.iterations[index] % 1.0,
+                fractional % 1.0,
             );
             pixels.push(color);
         } else {
@@ -196,4 +228,20 @@ pub fn chunkify(config: &Config) -> Vec<ChunkConfig> {
         }
     }
     chunks
+}
+
+pub fn zoom(config: &mut Config, x: f64, y: f64, width: f64, height: f64, zoom_factor: f64) {
+    let width_range = Range::new(0.0, width);
+    let height_range = Range::new(0.0, height);
+    let selection = rect_from_position(&config.position, &config.zoom);
+    let real_range = Range::new(selection.start.x, selection.end.x);
+    let imaginary_range = Range::new(selection.start.y, selection.end.y);
+    config.position = Vector {
+        x: Range::scale(&width_range, x, &real_range),
+        y: Range::scale(&height_range, y, &imaginary_range),
+    };
+    config.zoom = Vector {
+        x: config.zoom.x * zoom_factor,
+        y: config.zoom.y * zoom_factor,
+    };
 }

@@ -1,6 +1,7 @@
 [workspace]
-members = ["mandelbrot", "wasm"]
-default-members = ["mandelbrot"]
+members = ["mandelbrot", "wasm", "gui"]
+default-members = ["mandelbrot", "gui"]
+resolver = "2"
 
 [profile.release]
 lto = "fat"

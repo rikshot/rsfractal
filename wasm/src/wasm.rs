@@ -1,7 +1,5 @@
 use rsfractal_mandelbrot::color::*;
 use rsfractal_mandelbrot::mandelbrot::*;
-use rsfractal_mandelbrot::range::*;
-use rsfractal_mandelbrot::vector::*;
 
 use rayon::prelude::*;
 use seed::prelude::*;
@@ -153,25 +151,9 @@ fn image_data(base: usize, len: usize, width: u32, height: u32) -> ImageData {
     ImageData::new(&mem, width as f64, height as f64).unwrap()
 }
 
-fn zoom(config: &mut Config, x: f64, y: f64, width: f64, height: f64, zoom_factor: f64) {
-    let width_range = Range::new(0.0, width);
-    let height_range = Range::new(0.0, height);
-    let selection = rect_from_position(&config.position, &config.zoom);
-    let real_range = Range::new(selection.start.x, selection.end.x);
-    let imaginary_range = Range::new(selection.start.y, selection.end.y);
-    config.position = Vector {
-        x: Range::scale(&width_range, x, &real_range),
-        y: Range::scale(&height_range, y, &imaginary_range),
-    };
-    config.zoom = Vector {
-        x: config.zoom.x * zoom_factor,
-        y: config.zoom.y * zoom_factor,
-    };
-}
-
 fn parse_config(raw_config: String) -> Option<Config> {
     let decoded = base64::decode(&raw_config).ok()?;
-    rmp_serde::from_read_ref(&decoded).ok()?
+    rmp_serde::from_slice(&decoded).ok()?
 }
 
 fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
