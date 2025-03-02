@@ -1,7 +1,17 @@
 [workspace]
 members = ["mandelbrot", "wasm", "gui"]
 default-members = ["mandelbrot", "gui"]
-resolver = "2"
+resolver = "3"
+
+[workspace.package]
+description = "Rusty fractals with WebAssembly"
+version = "0.1.0"
+authors = ["Ville Orkas <ville@orkas.fi>"]
+edition = "2024"
+publish = false
+homepage = "https://rikshot.github.io/rsfractal"
+repository = "https://github.com/rikshot/rsfractal"
+license = "MIT"
 
 [profile.release]
 lto = "fat"

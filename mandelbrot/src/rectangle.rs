@@ -1,10 +1,8 @@
-use serde::Deserialize;
-
 use num_traits::Num;
 
 use super::vector::Vector;
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct Rectangle<T: Num> {
     pub start: Vector<T>,
     pub end: Vector<T>,

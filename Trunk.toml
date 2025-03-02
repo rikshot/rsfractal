@@ -1,0 +1,11 @@
+[build]
+target = "wasm/index.html"
+filehash = false
+minify = "on_release"
+
+[serve]
+headers = { "Cross-Origin-Opener-Policy" = "same-origin", "Cross-Origin-Embedder-Policy" = "require-corp" }
+
+[[hooks]]
+stage = "post_build"
+command = "scripts/postprocess.sh"

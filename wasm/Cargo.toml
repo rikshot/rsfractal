@@ -1,46 +1,24 @@
 [package]
 name = "rsfractal-wasm"
-description = "Rusty fractals with WebAssembly"
-version = "0.1.0"
-authors = ["Ville Orkas <ville@orkas.fi>"]
-edition = "2021"
-publish = false
-homepage = "https://rikshot.github.io/rsfractal"
-repository = "https://github.com/rikshot/rsfractal"
-license = "MIT"
+description.workspace = true
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+publish.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
 
 [dependencies]
 rsfractal-mandelbrot = { path = "../mandelbrot" }
 rayon = "*"
-rmp-serde = "*"
-base64 = "*"
-seed = "*"
-wasm-bindgen = "*"
-wasm-bindgen-futures = "*"
+wasm-bindgen-rayon = { version = "*", features = ["no-bundler"] }
+wasm-bindgen = { version = "*", features = ["enable-interning"] }
 js-sys = "*"
-futures = "*"
+leptos = { version = "*", features = ["nightly", "csr"] }
+num-complex = "*"
+console_error_panic_hook = "*"
 
 [dependencies.web-sys]
 version = "*"
-features = [
-    "DomRect",
-    "DomRectReadOnly",
-    "DedicatedWorkerGlobalScope",
-    "WorkerGlobalScope",
-    "WorkerLocation",
-    "MessageEvent",
-    "ErrorEvent",
-    "Event",
-    "Worker",
-    "WorkerOptions",
-    "WorkerType",
-    "Url",
-    "Blob",
-    "BlobPropertyBag",
-    "Navigator",
-    "ImageData",
-    "Performance"
-]
-
-[lib]
-crate-type = ["cdylib"]
+features = ["CanvasRenderingContext2d", "ImageData"]

@@ -1,0 +1,21 @@
+[build]
+rustc-wrapper = "sccache"
+
+[target.'cfg(not(target_arch = "wasm32"))']
+rustflags = "-C target-cpu=native"
+
+[target.wasm32-unknown-unknown]
+rustflags = """-C target-feature=\
+    +atomics,\
+    +bulk-memory,\
+    +exception-handling,\
+    +mutable-globals,\
+    +nontrapping-fptoint,\
+    +reference-types,\
+    +relaxed-simd,\
+    +sign-ext,\
+    +simd128
+"""
+
+[unstable]
+build-std = ["panic_abort", "std"]
