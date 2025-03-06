@@ -19,7 +19,16 @@ leptos = { version = "*", features = ["nightly", "csr"] }
 num-complex = "*"
 console_error_panic_hook = "*"
 futures = { version = "*", default-features = false }
+strum = { version = "*", features = ["derive"] }
+serde = { version = "*", features = ["derive"] }
+serde-wasm-bindgen = "*"
 
 [dependencies.web-sys]
 version = "*"
-features = ["CanvasRenderingContext2d", "ImageData", "DomRect", "Element"]
+features = [
+    "CanvasRenderingContext2d",
+    "ImageData",
+    "DomRect",
+    "Element",
+    "HtmlSelectElement",
+]

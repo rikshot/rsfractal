@@ -1,3 +1,4 @@
+use std::str::FromStr;
 use std::sync::Arc;
 
 use futures::channel::oneshot;
@@ -5,25 +6,34 @@ use js_sys::Uint8ClampedArray;
 use leptos::html::Canvas;
 use leptos::prelude::*;
 use rsfractal_mandelbrot::mandelbrot::*;
+use serde::Serialize;
 use wasm_bindgen::JsCast;
 use web_sys::CanvasRenderingContext2d;
 use web_sys::Element;
 
+use strum::IntoEnumIterator;
 pub use wasm_bindgen_rayon::init_thread_pool;
+use web_sys::HtmlSelectElement;
 use web_sys::ImageData;
 use web_sys::MouseEvent;
+
+#[derive(Serialize)]
+struct ContextAttributes {
+    alpha: bool,
+    desynchronized: bool,
+}
 
 #[component]
 fn App() -> impl IntoView {
     let (config, set_config) = signal(Config::default());
 
-    let action = Action::new(|(size, config): &(usize, Config)| {
-        let size = size.clone();
+    let action = Action::new(|config: &Config| {
         let config = config.clone();
         let (sender, receiver) = oneshot::channel::<Arc<Vec<u8>>>();
         async move {
             rayon::spawn(move || {
-                let mut pixels = vec![0u8; size];
+                let size = config.width * config.height * 4;
+                let mut pixels = vec![0u8; size as usize];
                 render(&config, &mut pixels);
                 let pixels = Arc::new(pixels);
                 sender.send(pixels).unwrap();
@@ -34,13 +44,8 @@ fn App() -> impl IntoView {
 
     let canvas_ref = NodeRef::<Canvas>::new();
 
-    let on_render = move |_| {
-        if let Some(canvas) = canvas_ref.get() {
-            let width = canvas.width() as usize;
-            let height = canvas.height() as usize;
-            let size = width * height * 4;
-            action.dispatch((size, config()));
-        }
+    let render = move || {
+        action.dispatch(config());
     };
 
     Effect::new(move || {
@@ -53,7 +58,14 @@ fn App() -> impl IntoView {
                 data.copy_from(&pixels);
                 let image_data = ImageData::new_with_js_u8_clamped_array_and_sh(&data, width, height).unwrap();
                 let context: CanvasRenderingContext2d = canvas
-                    .get_context("2d")
+                    .get_context_with_context_options(
+                        "2d",
+                        &serde_wasm_bindgen::to_value(&ContextAttributes {
+                            alpha: false,
+                            desynchronized: true,
+                        })
+                        .unwrap(),
+                    )
                     .unwrap()
                     .unwrap()
                     .unchecked_into::<CanvasRenderingContext2d>();
@@ -76,7 +88,7 @@ fn App() -> impl IntoView {
             let zoom_factor = if event.shift_key() { 1.0 / 0.25 } else { 0.25 };
             config.zoom(x, y, zoom_factor);
             set_config(config);
-            on_render(event);
+            render();
         }
     };
 
@@ -84,13 +96,32 @@ fn App() -> impl IntoView {
         <main>
             <header>
                 <h1>"rsfractal"</h1>
-                <button
-                    on:click=on_render
-                    disabled=move || action.pending().get()>
+                <button on:click=move |_| render() disabled=move || action.pending().get()>
                     {move || if action.pending().get() { "Rendering..." } else { "Render" }}
                 </button>
+                <select on:change=move |ev| {
+                    let value = ev.target().unwrap().unchecked_into::<HtmlSelectElement>().value();
+                    let mut config = config();
+                    config.coloring(Coloring::from_str(&value).unwrap());
+                    set_config(config);
+                }>
+                    {Coloring::iter()
+                        .map(|coloring| {
+                            view! { <option>{coloring.to_string()}</option> }
+                        })
+                        .collect_view()}
+                </select>
+                <button on:click=move |_| {
+                    set_config(Config::default());
+                    render();
+                }>"Reset"</button>
             </header>
-            <canvas width=1280 height=720 node_ref=canvas_ref on:click=on_click />
+            <canvas
+                width=config().width
+                height=config().height
+                node_ref=canvas_ref
+                on:click=on_click
+            />
         </main>
     }
 }

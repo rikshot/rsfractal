@@ -9,6 +9,9 @@ use num_traits::MulAdd;
 use num_traits::Num;
 use num_traits::Zero;
 use rayon::prelude::*;
+use strum::Display;
+use strum::EnumIter;
+use strum::EnumString;
 
 use super::range::Range;
 use super::rectangle::Rectangle;
@@ -21,7 +24,14 @@ pub struct Config {
     pub position: Vector<f64>,
     pub zoom: Vector<f64>,
     pub iterations: usize,
+    pub coloring: Coloring,
     pub palette: Vec<DynamicColor>,
+}
+
+#[derive(Debug, Clone, Display, EnumString, EnumIter)]
+pub enum Coloring {
+    Palette,
+    LCH,
 }
 
 impl Config {
@@ -39,6 +49,10 @@ impl Config {
             x: self.zoom.x * zoom_factor,
             y: self.zoom.y * zoom_factor,
         };
+    }
+
+    pub fn coloring(&mut self, coloring: Coloring) {
+        self.coloring = coloring;
     }
 
     pub fn palette(&self, iterations: f64) -> Rgba8 {
@@ -71,6 +85,7 @@ impl Default for Config {
             position: Vector { x: -0.5, y: 0.0 },
             zoom: Vector { x: 2.0, y: 1.125 },
             iterations: 1000,
+            coloring: Coloring::Palette,
             palette,
         }
     }
@@ -101,7 +116,10 @@ pub fn render(config: &Config, pixels: &mut [u8]) {
 
                 let iterations = iterate(config.iterations, &c);
                 if iterations < config.iterations as f64 {
-                    let color = config.palette(iterations);
+                    let color = match config.coloring {
+                        Coloring::Palette => config.palette(iterations),
+                        Coloring::LCH => config.lch(iterations),
+                    };
                     pixel.copy_from_slice(&color.to_u8_array());
                 } else {
                     pixel.copy_from_slice(&[0, 0, 0, 0xFF]);

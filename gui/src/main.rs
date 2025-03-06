@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use pixels::{Pixels, SurfaceTexture};
-use rsfractal_mandelbrot::mandelbrot::{render, Config};
+use rsfractal_mandelbrot::mandelbrot::{Config, render};
 use winit::application::ApplicationHandler;
 use winit::dpi::{LogicalSize, PhysicalPosition};
 use winit::event::{ElementState, KeyEvent, MouseButton, WindowEvent};

@@ -17,6 +17,7 @@ color = "*"
 image = { version = "*", default-features = false, features = [
     "png",
 ], optional = true }
+strum = { version = "*", features = ["derive"] }
 
 [[example]]
 name = "image"

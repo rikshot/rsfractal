@@ -1,4 +1,4 @@
-use rsfractal_mandelbrot::mandelbrot::{render, Config};
+use rsfractal_mandelbrot::mandelbrot::{Config, render};
 
 fn main() {
     let config = Config::default();
