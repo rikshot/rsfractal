@@ -1,14 +1,13 @@
-use color::parse_color;
 use color::DynamicColor;
 use color::HueDirection;
 use color::Lch;
 use color::OpaqueColor;
 use color::Rgba8;
+use color::parse_color;
 use num_complex::Complex;
 use num_traits::MulAdd;
 use num_traits::Num;
 use num_traits::Zero;
-
 use rayon::prelude::*;
 
 use super::range::Range;
@@ -85,23 +84,30 @@ pub fn render(config: &Config, pixels: &mut [u8]) {
     let real_range = Range::new(rect.start.x, rect.end.x);
     let imaginary_range = Range::new(rect.start.y, rect.end.y);
 
-    pixels.par_chunks_mut(4).enumerate().for_each(|(index, pixel)| {
-        let x = (index % config.width as usize) as u32;
-        let y = (index / config.width as usize) as u32;
+    let chunk_size = pixels.len() / rayon::current_num_threads();
+    pixels
+        .par_chunks_mut(chunk_size)
+        .enumerate()
+        .for_each(|(index, pixels)| {
+            let start = index * chunk_size / 4;
+            pixels.chunks_mut(4).enumerate().for_each(|(index, pixel)| {
+                let x = ((start + index) % config.width as usize) as u32;
+                let y = ((start + index) / config.width as usize) as u32;
 
-        let c = Complex::new(
-            Range::scale(&width_range, x as f64, &real_range),
-            Range::scale(&height_range, y as f64, &imaginary_range),
-        );
+                let c = Complex::new(
+                    Range::scale(&width_range, x as f64, &real_range),
+                    Range::scale(&height_range, y as f64, &imaginary_range),
+                );
 
-        let iterations = iterate(config.iterations, &c);
-        if iterations < config.iterations as f64 {
-            let color = config.palette(iterations);
-            pixel.copy_from_slice(&color.to_u8_array());
-        } else {
-            pixel.copy_from_slice(&[0, 0, 0, 0xFF]);
-        }
-    })
+                let iterations = iterate(config.iterations, &c);
+                if iterations < config.iterations as f64 {
+                    let color = config.palette(iterations);
+                    pixel.copy_from_slice(&color.to_u8_array());
+                } else {
+                    pixel.copy_from_slice(&[0, 0, 0, 0xFF]);
+                }
+            });
+        })
 }
 
 fn iterate(max_iterations: usize, c: &Complex<f64>) -> f64 {
