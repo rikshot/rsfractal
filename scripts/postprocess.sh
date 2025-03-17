@@ -1,4 +1,6 @@
-#!/usr/bin/env bash
+#!/usr/bin/env bash -xue
 
-gzip --best --keep "$TRUNK_STAGING_DIR"/*{.js,.wasm}
-brotli --best --keep "$TRUNK_STAGING_DIR"/*{.js,.wasm}
+if [ $TRUNK_PROFILE == "release" ]; then
+    gzip --best --keep "$TRUNK_STAGING_DIR"/*{.js,.wasm}
+    brotli --best --keep "$TRUNK_STAGING_DIR"/*{.js,.wasm}
+fi

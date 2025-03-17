@@ -1,18 +1,17 @@
-use num_traits::float::Float;
-
-pub struct Range<T: Float> {
-    min: T,
-    max: T,
+#[derive(Clone, Copy)]
+pub struct Range {
+    min: f64,
+    max: f64,
 }
 
-impl<T: Float> Range<T> {
-    pub fn new(min: T, max: T) -> Range<T> {
-        Range { min, max }
+impl Range {
+    pub fn new(min: f64, max: f64) -> Self {
+        Self { min, max }
     }
 
-    pub fn scale(input: &Range<T>, value: T, output: &Range<T>) -> T {
-        let input_size = T::abs(input.max - input.min);
-        let output_size = T::abs(output.max - output.min);
+    pub fn scale(input: &Self, value: f64, output: &Self) -> f64 {
+        let input_size = f64::abs(input.max - input.min);
+        let output_size = f64::abs(output.max - output.min);
         (input.max * output.min - input.min * output.max + value * output_size) / input_size
     }
 }

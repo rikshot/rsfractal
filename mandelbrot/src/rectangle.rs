@@ -1,23 +1,21 @@
-use num_traits::Num;
-
 use super::vector::Vector;
 
 #[derive(Debug, Clone)]
-pub struct Rectangle<T: Num> {
-    pub start: Vector<T>,
-    pub end: Vector<T>,
+pub struct Rectangle {
+    pub start: Vector,
+    pub end: Vector,
 }
 
-impl<T: Num + Copy> Rectangle<T> {
-    pub fn new(start: Vector<T>, end: Vector<T>) -> Rectangle<T> {
+impl Rectangle {
+    pub fn new(start: Vector, end: Vector) -> Self {
         Rectangle { start, end }
     }
 
-    pub fn width(&self) -> T {
+    pub fn width(&self) -> f64 {
         self.end.x - self.start.x
     }
 
-    pub fn height(&self) -> T {
+    pub fn height(&self) -> f64 {
         self.end.y - self.start.y
     }
 }

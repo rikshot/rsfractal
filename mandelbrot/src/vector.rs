@@ -1,13 +1,11 @@
-use num_traits::Num;
-
 #[derive(Debug, Clone)]
-pub struct Vector<T: Num> {
-    pub x: T,
-    pub y: T,
+pub struct Vector {
+    pub x: f64,
+    pub y: f64,
 }
 
-impl<T: Num> Vector<T> {
-    pub fn new(x: T, y: T) -> Vector<T> {
-        Vector { x, y }
+impl Vector {
+    pub fn new(x: f64, y: f64) -> Self {
+        Self { x, y }
     }
 }

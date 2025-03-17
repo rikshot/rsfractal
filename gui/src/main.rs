@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use pixels::{Pixels, SurfaceTexture};
-use rsfractal_mandelbrot::mandelbrot::{Config, render};
+use rsfractal_mandelbrot::mandelbrot::Mandelbrot;
 use winit::application::ApplicationHandler;
 use winit::dpi::{LogicalSize, PhysicalPosition};
 use winit::event::{ElementState, KeyEvent, MouseButton, WindowEvent};
@@ -10,30 +10,29 @@ use winit::event_loop::EventLoop;
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::Window;
 
-const WIDTH: u32 = 1280;
-const HEIGHT: u32 = 720;
-
 #[derive(Default)]
 struct App<'a> {
-    config: Config,
+    mandelbrot: Mandelbrot,
     window: Option<Arc<Window>>,
     pixels: Option<Pixels<'a>>,
     mouse_position: Option<PhysicalPosition<f64>>,
 }
 
+const MIN_WIDTH: u32 = 1280;
+const MIN_HEIGHT: u32 = 720;
+
 impl ApplicationHandler for App<'_> {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
-        let size = LogicalSize::new(WIDTH as f64, HEIGHT as f64);
+        let size = LogicalSize::new(MIN_WIDTH as f64, MIN_HEIGHT as f64);
         if let Ok(window) = event_loop.create_window(
             Window::default_attributes()
                 .with_title("rsfractal")
-                .with_inner_size(size)
                 .with_min_inner_size(size),
         ) {
             let window = Arc::new(window);
             let window_size = window.inner_size();
             let surface_texture = SurfaceTexture::new(window_size.width, window_size.height, window.clone());
-            if let Ok(pixels) = Pixels::new(WIDTH, HEIGHT, surface_texture) {
+            if let Ok(pixels) = Pixels::new(self.mandelbrot.width, self.mandelbrot.height, surface_texture) {
                 window.request_redraw();
                 self.window = Some(window);
                 self.pixels = Some(pixels);
@@ -86,10 +85,10 @@ impl ApplicationHandler for App<'_> {
                             let (x, y) = pixels.window_pos_to_pixel(mouse_position.into()).unwrap();
                             let zoom_factor = match button {
                                 MouseButton::Left => 0.25,
-                                MouseButton::Right => 1.75,
+                                MouseButton::Right => 1.0 / 0.25,
                                 _ => 1.0,
                             };
-                            self.config.zoom(x as f64, y as f64, zoom_factor);
+                            self.mandelbrot.zoom(x as f64, y as f64, zoom_factor);
                             window.request_redraw()
                         }
                     }
@@ -97,7 +96,7 @@ impl ApplicationHandler for App<'_> {
             }
             WindowEvent::RedrawRequested => {
                 if let Some(pixels) = &mut self.pixels {
-                    render(&self.config, pixels.frame_mut());
+                    self.mandelbrot.render(pixels.frame_mut());
                     pixels.render().unwrap();
                 }
             }

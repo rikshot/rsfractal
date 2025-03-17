@@ -15,7 +15,7 @@ rayon = "*"
 wasm-bindgen-rayon = { version = "*", features = ["no-bundler"] }
 wasm-bindgen = { version = "*", features = ["enable-interning"] }
 js-sys = "*"
-leptos = { version = "*", features = ["nightly", "csr"] }
+leptos = { version = "*", features = ["csr"] }
 num-complex = "*"
 console_error_panic_hook = "*"
 futures = { version = "*", default-features = false }

@@ -9,12 +9,19 @@ rustflags = """-C target-feature=\
     +atomics,\
     +bulk-memory,\
     +exception-handling,\
+    +extended-const,\
+    +multivalue,\
     +mutable-globals,\
     +nontrapping-fptoint,\
     +reference-types,\
     +relaxed-simd,\
     +sign-ext,\
-    +simd128
+    +simd128,\
+    +tail-call,\
+    +bulk-memory-opt,\
+    +call-indirect-overlong,\
+    +fp16,\
+    +multimemory
 """
 
 [unstable]
