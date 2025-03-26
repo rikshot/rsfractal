@@ -31,8 +31,8 @@ fn App() -> impl IntoView {
         let (sender, receiver) = oneshot::channel::<Arc<Vec<u8>>>();
         async move {
             rayon::spawn(move || {
-                let size = mandelbrot.width * mandelbrot.height * 4;
-                let mut pixels = vec![0u8; size as usize];
+                let size = mandelbrot.width() * mandelbrot.height() * 4;
+                let mut pixels = vec![0u8; size];
                 mandelbrot.render(&mut pixels);
                 let pixels = Arc::new(pixels);
                 sender.send(pixels).unwrap();
@@ -50,8 +50,8 @@ fn App() -> impl IntoView {
     Effect::new(move || {
         if let Some(canvas) = canvas_ref.get() {
             if let Some(pixels) = action.value().get() {
-                let width = canvas.width() as u32;
-                let height = canvas.height() as u32;
+                let width = canvas.width();
+                let height = canvas.height();
                 let size = width * height * 4;
                 let data = Uint8ClampedArray::new_with_length(size);
                 data.copy_from(&pixels);
@@ -68,6 +68,7 @@ fn App() -> impl IntoView {
                     .unwrap()
                     .unwrap()
                     .unchecked_into::<CanvasRenderingContext2d>();
+                context.set_image_smoothing_enabled(false);
                 context.put_image_data(&image_data, 0.0, 0.0).unwrap();
             }
         }
@@ -93,8 +94,8 @@ fn App() -> impl IntoView {
         <main class="size-full">
             <canvas
                 class="absolute w-full top-1/2 -translate-y-1/2"
-                width=move || mandelbrot.read().width
-                height=move || mandelbrot.read().height
+                width=move || mandelbrot.read().width()
+                height=move || mandelbrot.read().height()
                 node_ref=canvas_ref
                 on:click=on_click
             />
@@ -116,6 +117,69 @@ fn App() -> impl IntoView {
                     "Reset"
                 </Button>
                 <hr class="my-2" />
+                <label class="text-base" for="resolution">
+                    "Resolution:"
+                </label>
+                <Select
+                    attr:id="resolution"
+                    on:change=move |ev| {
+                        let value = event_target_value(&ev).parse().unwrap();
+                        set_mandelbrot.update(|mandelbrot| mandelbrot.selected_resolution = value);
+                        render();
+                    }
+                    prop:disabled=move || action.pending().get()
+                    prop:value=move || { mandelbrot.read().selected_resolution.to_string() }
+                >
+                    {mandelbrot
+                        .read()
+                        .resolutions()
+                        .iter()
+                        .enumerate()
+                        .map(|(index, (width, height))| {
+                            view! {
+                                <option
+                                    value=index.to_string()
+                                    selected=index == mandelbrot.read().selected_resolution
+                                >
+                                    {*width}
+                                    "x"
+                                    {*height}
+                                </option>
+                            }
+                        })
+                        .collect_view()}
+                </Select>
+                <br />
+                <label class="text-base" for="rendering">
+                    "Rendering:"
+                </label>
+                <Select
+                    attr:id="rendering"
+                    on:change=move |ev| {
+                        let value = event_target_value(&ev);
+                        set_mandelbrot
+                            .update(|mandelbrot| {
+                                mandelbrot.rendering = Rendering::from_str(&value).unwrap();
+                            });
+                        render()
+                    }
+                    prop:disabled=move || action.pending().get()
+                    prop:value=move || mandelbrot.read().rendering.to_string()
+                >
+                    {Rendering::iter()
+                        .map(|rendering| {
+                            view! {
+                                <option
+                                    value=rendering.to_string()
+                                    selected=move || mandelbrot.read().rendering == rendering
+                                >
+                                    {rendering.to_string()}
+                                </option>
+                            }
+                        })
+                        .collect_view()}
+                </Select>
+                <br />
                 <label class="text-base" for="bailout">
                     "Bailout:"
                 </label>
@@ -175,7 +239,12 @@ fn App() -> impl IntoView {
                     {Coloring::iter()
                         .map(|coloring| {
                             view! {
-                                <option value=coloring.to_string()>{coloring.to_string()}</option>
+                                <option
+                                    value=coloring.to_string()
+                                    selected=move || mandelbrot.read().coloring == coloring
+                                >
+                                    {coloring.to_string()}
+                                </option>
                             }
                         })
                         .collect_view()}
@@ -193,11 +262,18 @@ fn App() -> impl IntoView {
                     >
                         {mandelbrot
                             .read()
-                            .palettes
+                            .palettes()
                             .iter()
                             .enumerate()
                             .map(|(index, (name, _))| {
-                                view! { <option value=index.to_string()>{name.clone()}</option> }
+                                view! {
+                                    <option
+                                        value=index.to_string()
+                                        selected=move || mandelbrot.read().selected_palette == index
+                                    >
+                                        {name.clone()}
+                                    </option>
+                                }
                             })
                             .collect_view()}
                     </Select>

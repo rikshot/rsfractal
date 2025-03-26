@@ -10,14 +10,25 @@ repository.workspace = true
 license.workspace = true
 
 [dependencies]
-num-complex = "*"
+num = "*"
 rayon = "*"
-color = "*"
+colorgrad = { version = "*", features = ["lab"] }
 image = { version = "*", default-features = false, features = [
     "png",
 ], optional = true }
 strum = { version = "*", features = ["derive"] }
 
+[dev-dependencies]
+divan = "*"
+
 [[example]]
 name = "image"
 required-features = ["image"]
+
+[[bench]]
+name = "parameters"
+harness = false
+
+[[bench]]
+name = "rendering"
+harness = false

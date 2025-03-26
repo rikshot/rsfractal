@@ -1,5 +1,5 @@
 [build]
-target = "wasm/index.html"
+target = "index.html"
 filehash = false
 minify = "on_release"
 
@@ -7,7 +7,7 @@ minify = "on_release"
 tailwindcss = "4.0.11"
 
 [watch]
-watch = ["mandelbrot", "wasm"]
+watch = ["../mandelbrot"]
 
 [serve.headers]
 "Cross-Origin-Opener-Policy" = "same-origin"

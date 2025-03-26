@@ -32,7 +32,11 @@ impl ApplicationHandler for App<'_> {
             let window = Arc::new(window);
             let window_size = window.inner_size();
             let surface_texture = SurfaceTexture::new(window_size.width, window_size.height, window.clone());
-            if let Ok(pixels) = Pixels::new(self.mandelbrot.width, self.mandelbrot.height, surface_texture) {
+            if let Ok(pixels) = Pixels::new(
+                self.mandelbrot.width() as u32,
+                self.mandelbrot.height() as u32,
+                surface_texture,
+            ) {
                 window.request_redraw();
                 self.window = Some(window);
                 self.pixels = Some(pixels);
