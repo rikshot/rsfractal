@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use num::complex::Complex;
+use num::complex::Complex64;
 
 use crate::{
     mandelbrot::{Mandelbrot, rect_from_position},
@@ -68,7 +68,7 @@ impl<'a> BoundaryScanner<'a> {
         let x = (index % self.mandelbrot.width()) as f64;
         let y = (index / self.mandelbrot.width()) as f64;
 
-        let c = Complex::new(
+        let c = Complex64::new(
             Range::scale(&self.width_range, x, &self.real_range),
             Range::scale(&self.height_range, y, &self.imaginary_range),
         );

@@ -1,8 +1,7 @@
 use std::fmt::Debug;
 
 use colorgrad::{CatmullRomGradient, Color, Gradient, GradientBuilder};
-use num::complex::Complex;
-use num::traits::MulAddAssign;
+use num::complex::Complex64;
 use rayon::prelude::*;
 use strum::{Display, EnumIter, EnumString};
 
@@ -90,7 +89,7 @@ impl Mandelbrot {
                     let x = ((start + index) % self.width()) as f64;
                     let y = ((start + index) / self.width()) as f64;
 
-                    let c = Complex::new(
+                    let c = Complex64::new(
                         Range::scale(&width_range, x, &real_range),
                         Range::scale(&height_range, y, &imaginary_range),
                     );
@@ -134,33 +133,106 @@ impl Mandelbrot {
             });
     }
 
-    pub(crate) fn iterate(&self, c: &Complex<f64>) -> (Complex<f64>, usize) {
-        let mut z: Complex<f64> = Complex::ZERO;
-
+    pub(crate) fn iterate(&self, c: &Complex64) -> (Complex64, usize) {
         let im2 = c.im * c.im;
         let mut q = c.re - 0.25;
         q *= q;
         q += im2;
 
         if q * (q + (c.re - 0.25)) < 0.25 * im2 {
-            (z, self.max_iterations)
+            (Complex64::ZERO, self.max_iterations)
         } else {
+            unsafe { self.iterate_inner(c) }
+        }
+    }
+
+    #[cfg(all(not(target_arch = "aarch64"), not(target_family = "wasm")))]
+    pub(crate) fn iterate_inner(&self, c: &Complex64) -> (Complex64, usize) {
+        use num::traits::MulAddAssign;
+        let mut z: Complex64 = Complex64::ZERO;
+        let mut iterations = 0;
+        let mut old: Complex64 = Complex64::ZERO;
+        let mut period = 0;
+        while z.norm_sqr() < self.bailout && iterations < self.max_iterations {
+            z.mul_add_assign(z, *c);
+            if z == old {
+                return (z, self.max_iterations);
+            }
+            iterations += 1;
+            period += 1;
+            if period > self.period_length {
+                period = 0;
+                old = z;
+            }
+        }
+        (z, iterations)
+    }
+
+    #[cfg(all(target_family = "wasm", target_feature = "relaxed-simd"))]
+    pub(crate) unsafe fn iterate_inner(&self, c: &Complex64) -> (Complex64, usize) {
+        use core::arch::wasm32::*;
+        use core::mem::transmute;
+        unsafe {
+            let c: v128 = transmute(*c);
+            let mut z = f64x2_splat(0.0);
             let mut iterations = 0;
-            let mut old: Complex<f64> = Complex::ZERO;
+            let mut old = f64x2_splat(0.0);
             let mut period = 0;
-            while z.norm_sqr() < self.bailout && iterations < self.max_iterations {
-                z.mul_add_assign(z, *c);
-                if z == old {
-                    return (z, self.max_iterations);
+            loop {
+                let acbd = f64x2_mul(z, z);
+                let adbc = f64x2_mul(z, f64x2(f64x2_extract_lane::<1>(z), f64x2_extract_lane::<0>(z)));
+                let acad = f64x2(f64x2_extract_lane::<0>(acbd), f64x2_extract_lane::<0>(adbc));
+                let bdbc = f64x2(f64x2_extract_lane::<1>(acbd), f64x2_extract_lane::<1>(adbc));
+                z = f64x2_add(f64x2_relaxed_madd(bdbc, f64x2(-1.0, 1.0), acad), c);
+
+                if u128::MAX == transmute::<v128, u128>(f64x2_eq(z, old)) {
+                    break (transmute::<v128, Complex64>(z), self.max_iterations);
                 }
+
                 iterations += 1;
                 period += 1;
                 if period > self.period_length {
                     period = 0;
                     old = z;
                 }
+
+                if f64x2_extract_lane::<0>(acbd) + f64x2_extract_lane::<1>(acbd) >= self.bailout
+                    || iterations >= self.max_iterations
+                {
+                    break (transmute::<v128, Complex64>(z), iterations);
+                }
             }
-            (z, iterations)
+        }
+    }
+
+    #[cfg(all(target_arch = "aarch64", target_feature = "fcma"))]
+    pub(crate) unsafe fn iterate_inner(&self, c: &Complex64) -> (Complex64, usize) {
+        use core::arch::aarch64::*;
+        use core::mem::transmute;
+        unsafe {
+            let c: float64x2_t = transmute(*c);
+            let mut z = vmovq_n_f64(0.0);
+            let mut iterations = 0;
+            let mut old = vmovq_n_f64(0.0);
+            let mut period = 0;
+            loop {
+                z = vcmlaq_rot90_f64(vcmlaq_f64(c, z, z), z, z);
+
+                if u128::MAX == transmute::<uint64x2_t, u128>(vceqq_f64(z, old)) {
+                    break (transmute::<float64x2_t, Complex64>(z), self.max_iterations);
+                }
+
+                iterations += 1;
+                period += 1;
+                if period > self.period_length {
+                    period = 0;
+                    old = z;
+                }
+
+                if vaddvq_f64(vmulq_f64(z, z)) >= self.bailout || iterations >= self.max_iterations {
+                    break (transmute::<float64x2_t, Complex64>(z), iterations);
+                }
+            }
         }
     }
 
@@ -180,7 +252,7 @@ impl Mandelbrot {
         };
     }
 
-    fn smooth(&self, z: &Complex<f64>, iterations: usize) -> f64 {
+    fn smooth(&self, z: &Complex64, iterations: usize) -> f64 {
         if iterations < self.max_iterations {
             let zn = f64::ln(z.norm_sqr()) / 2.0;
             let nu = f64::ln(zn / std::f64::consts::LN_2) / std::f64::consts::LN_2;
@@ -193,7 +265,7 @@ impl Mandelbrot {
         f64::powf(f64::powf(iterations / self.max_iterations as f64, self.exponent), 1.5)
     }
 
-    fn palette(&self, z: Option<&Complex<f64>>, iterations: usize) -> Color {
+    fn palette(&self, z: Option<&Complex64>, iterations: usize) -> Color {
         let smooth = if let Some(z) = z {
             self.smooth(z, iterations)
         } else {
@@ -204,7 +276,7 @@ impl Mandelbrot {
         palette.at(exponential as f32)
     }
 
-    fn lch(&self, z: Option<&Complex<f64>>, iterations: usize) -> Color {
+    fn lch(&self, z: Option<&Complex64>, iterations: usize) -> Color {
         let smooth = if let Some(z) = z {
             self.smooth(z, iterations)
         } else {
@@ -254,12 +326,12 @@ impl Default for Mandelbrot {
 
         Self {
             resolutions,
-            selected_resolution: if cfg!(debug_assertions) { 0 } else { 5 },
+            selected_resolution: if cfg!(debug_assertions) { 0 } else { 3 },
             position: Vector { x: -0.5, y: 0.0 },
             zoom: Vector { x: 2.0, y: 1.125 },
-            rendering: Rendering::Approximate,
+            rendering: Rendering::Smooth,
             bailout: f64::powf(2.0, 16.0),
-            max_iterations: 100000,
+            max_iterations: 1000,
             chunk_size: usize::pow(2, 21),
             period_length: 20,
             coloring: Coloring::LCH,

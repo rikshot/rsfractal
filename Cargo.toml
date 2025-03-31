@@ -17,8 +17,7 @@ license = "MIT"
 lto = "fat"
 codegen-units = 1
 opt-level = 3
-panic = "abort"
 
-[profile.profiling]
+[profile.bench]
 inherits = "release"
 debug = true

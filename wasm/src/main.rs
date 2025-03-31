@@ -130,24 +130,26 @@ fn App() -> impl IntoView {
                     prop:disabled=move || action.pending().get()
                     prop:value=move || { mandelbrot.read().selected_resolution.to_string() }
                 >
-                    {mandelbrot
-                        .read()
-                        .resolutions()
-                        .iter()
-                        .enumerate()
-                        .map(|(index, (width, height))| {
-                            view! {
-                                <option
-                                    value=index.to_string()
-                                    selected=index == mandelbrot.read().selected_resolution
-                                >
-                                    {*width}
-                                    "x"
-                                    {*height}
-                                </option>
-                            }
-                        })
-                        .collect_view()}
+                    {move || {
+                        mandelbrot
+                            .read()
+                            .resolutions()
+                            .iter()
+                            .enumerate()
+                            .map(|(index, (width, height))| {
+                                view! {
+                                    <option
+                                        value=index.to_string()
+                                        selected=index == mandelbrot.read().selected_resolution
+                                    >
+                                        {*width}
+                                        "x"
+                                        {*height}
+                                    </option>
+                                }
+                            })
+                            .collect_view()
+                    }}
                 </Select>
                 <br />
                 <label class="text-base" for="rendering">
