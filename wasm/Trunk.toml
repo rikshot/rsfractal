@@ -7,7 +7,7 @@ minify = "on_release"
 tailwindcss = "4.0.11"
 
 [watch]
-watch = ["../mandelbrot"]
+watch = ["../mandelbrot", "src", "index.html", "index.css"]
 
 [serve.headers]
 "Cross-Origin-Opener-Policy" = "same-origin"

@@ -11,11 +11,11 @@ impl Rectangle {
         Rectangle { start, end }
     }
 
-    pub fn width(&self) -> f64 {
+    pub fn width(&self) -> f32 {
         self.end.x - self.start.x
     }
 
-    pub fn height(&self) -> f64 {
+    pub fn height(&self) -> f32 {
         self.end.y - self.start.y
     }
 }

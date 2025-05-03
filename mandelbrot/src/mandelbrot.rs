@@ -1,7 +1,7 @@
 use std::fmt::Debug;
 
 use colorgrad::{CatmullRomGradient, Color, Gradient, GradientBuilder};
-use num::complex::Complex64;
+use num::complex::Complex32;
 use rayon::prelude::*;
 use strum::{Display, EnumIter, EnumString};
 
@@ -15,15 +15,15 @@ use super::vector::Vector;
 pub struct Mandelbrot {
     resolutions: Vec<(usize, usize)>,
     pub selected_resolution: usize,
-    pub(crate) position: Vector,
-    pub(crate) zoom: Vector,
+    pub position: Vector,
+    pub zoom: Vector,
     pub rendering: Rendering,
-    pub bailout: f64,
+    pub bailout: f32,
     pub max_iterations: usize,
     pub chunk_size: usize,
     pub period_length: usize,
     pub coloring: Coloring,
-    pub exponent: f64,
+    pub exponent: f32,
     pub(crate) palettes: Vec<(String, CatmullRomGradient)>,
     pub selected_palette: usize,
 }
@@ -31,7 +31,7 @@ pub struct Mandelbrot {
 #[derive(Debug, Clone, PartialEq, Display, EnumString, EnumIter)]
 pub enum Rendering {
     Smooth,
-    Approximate,
+    Fast,
 }
 
 #[derive(Debug, Clone, PartialEq, Display, EnumString, EnumIter)]
@@ -64,47 +64,50 @@ impl Mandelbrot {
         &self.palettes
     }
 
-    pub fn render(&self, pixels: &mut [u8]) {
-        match self.rendering {
-            Rendering::Smooth => self.render_smooth(pixels),
-            Rendering::Approximate => self.render_fast(pixels),
-        }
-    }
-
-    fn render_smooth(&self, pixels: &mut [u8]) {
-        let width_range = Range::new(0.0, self.width() as f64);
-        let height_range = Range::new(0.0, self.height() as f64);
+    pub fn ranges(&self) -> [Range; 4] {
+        let width_range = Range::new(0.0, self.width() as f32);
+        let height_range = Range::new(0.0, self.height() as f32);
 
         let rect = rect_from_position(&self.position, &self.zoom);
         let real_range = Range::new(rect.start.x, rect.end.x);
         let imaginary_range = Range::new(rect.start.y, rect.end.y);
 
-        let chunk_size = pixels.len() / rayon::current_num_threads();
+        [width_range, height_range, real_range, imaginary_range]
+    }
+
+    pub fn render(&self, pixels: &mut [u8]) {
+        match self.rendering {
+            Rendering::Smooth => self.render_smooth(pixels),
+            Rendering::Fast => self.render_fast(pixels),
+        }
+    }
+
+    fn render_smooth(&self, pixels: &mut [u8]) {
+        let [width_range, height_range, real_range, imaginary_range] = self.ranges();
+
         pixels
-            .par_chunks_exact_mut(chunk_size)
+            .par_chunks_exact_mut(4)
             .enumerate()
-            .for_each(|(index, pixels)| {
-                let start = index * chunk_size / 4;
-                pixels.chunks_exact_mut(4).enumerate().for_each(|(index, pixel)| {
-                    let x = ((start + index) % self.width()) as f64;
-                    let y = ((start + index) / self.width()) as f64;
+            .by_uniform_blocks(self.chunk_size)
+            .for_each(|(index, pixel)| {
+                let x = (index % self.width()) as f32;
+                let y = (index / self.width()) as f32;
 
-                    let c = Complex64::new(
-                        Range::scale(&width_range, x, &real_range),
-                        Range::scale(&height_range, y, &imaginary_range),
-                    );
+                let c = Complex32::new(
+                    Range::scale(&width_range, x, &real_range),
+                    Range::scale(&height_range, y, &imaginary_range),
+                );
 
-                    let (z, iterations) = self.iterate(&c);
-                    if iterations < self.max_iterations {
-                        let color = match self.coloring {
-                            Coloring::Palette => self.palette(Some(&z), iterations),
-                            Coloring::LCH => self.lch(Some(&z), iterations),
-                        };
-                        pixel.copy_from_slice(&color.to_rgba8());
-                    } else {
-                        pixel.copy_from_slice(&[0, 0, 0, 0xFF]);
-                    }
-                });
+                let (z, iterations) = self.iterate(&c);
+                if iterations < self.max_iterations {
+                    let color = match self.coloring {
+                        Coloring::Palette => self.palette(Some(&z), iterations),
+                        Coloring::LCH => self.lch(Some(&z), iterations),
+                    };
+                    pixel.copy_from_slice(&color.to_rgba8());
+                } else {
+                    pixel.copy_from_slice(&[0, 0, 0, 0xFF]);
+                }
             })
     }
 
@@ -133,25 +136,25 @@ impl Mandelbrot {
             });
     }
 
-    pub(crate) fn iterate(&self, c: &Complex64) -> (Complex64, usize) {
+    pub(crate) fn iterate(&self, c: &Complex32) -> (Complex32, usize) {
         let im2 = c.im * c.im;
         let mut q = c.re - 0.25;
         q *= q;
         q += im2;
 
         if q * (q + (c.re - 0.25)) < 0.25 * im2 {
-            (Complex64::ZERO, self.max_iterations)
+            (Complex32::ZERO, self.max_iterations)
         } else {
             unsafe { self.iterate_inner(c) }
         }
     }
 
     #[cfg(all(not(target_arch = "aarch64"), not(target_family = "wasm")))]
-    pub(crate) fn iterate_inner(&self, c: &Complex64) -> (Complex64, usize) {
+    pub(crate) fn iterate_inner(&self, c: &Complex32) -> (Complex32, usize) {
         use num::traits::MulAddAssign;
-        let mut z: Complex64 = Complex64::ZERO;
+        let mut z: Complex32 = Complex64::ZERO;
         let mut iterations = 0;
-        let mut old: Complex64 = Complex64::ZERO;
+        let mut old: Complex32 = Complex64::ZERO;
         let mut period = 0;
         while z.norm_sqr() < self.bailout && iterations < self.max_iterations {
             z.mul_add_assign(z, *c);
@@ -169,24 +172,24 @@ impl Mandelbrot {
     }
 
     #[cfg(all(target_family = "wasm", target_feature = "simd128"))]
-    pub(crate) unsafe fn iterate_inner(&self, c: &Complex64) -> (Complex64, usize) {
+    pub(crate) unsafe fn iterate_inner(&self, c: &Complex32) -> (Complex32, usize) {
         use core::arch::wasm32::*;
         use core::mem::transmute;
         unsafe {
             let c: v128 = transmute(*c);
-            let mut z = f64x2_splat(0.0);
+            let mut z = f32x2_splat(0.0);
             let mut iterations = 0;
-            let mut old = f64x2_splat(0.0);
+            let mut old = f32x2_splat(0.0);
             let mut period = 0;
             loop {
-                let acbd = f64x2_mul(z, z);
-                let adbc = f64x2_mul(z, f64x2(f64x2_extract_lane::<1>(z), f64x2_extract_lane::<0>(z)));
-                let acad = f64x2(f64x2_extract_lane::<0>(acbd), f64x2_extract_lane::<0>(adbc));
-                let bdbc = f64x2(f64x2_extract_lane::<1>(acbd), f64x2_extract_lane::<1>(adbc));
-                z = f64x2_add(f64x2_add(f64x2_mul(bdbc, f64x2(-1.0, 1.0)), acad), c);
+                let acbd = f32x2_mul(z, z);
+                let adbc = f32x2_mul(z, f32x2(f32x2_extract_lane::<1>(z), f32x2_extract_lane::<0>(z)));
+                let acad = f32x2(f32x2_extract_lane::<0>(acbd), f32x2_extract_lane::<0>(adbc));
+                let bdbc = f32x2(f32x2_extract_lane::<1>(acbd), f32x2_extract_lane::<1>(adbc));
+                z = f32x2_add(f32x2_add(f32x2_mul(bdbc, f32x2(-1.0, 1.0)), acad), c);
 
-                if u128::MAX == transmute::<v128, u128>(f64x2_eq(z, old)) {
-                    break (transmute::<v128, Complex64>(z), self.max_iterations);
+                if u128::MAX == transmute::<v128, u128>(f32x2_eq(z, old)) {
+                    break (transmute::<v128, Complex32>(z), self.max_iterations);
                 }
 
                 iterations += 1;
@@ -196,7 +199,7 @@ impl Mandelbrot {
                     old = z;
                 }
 
-                if f64x2_extract_lane::<0>(acbd) + f64x2_extract_lane::<1>(acbd) >= self.bailout
+                if f32x2_extract_lane::<0>(acbd) + f32x2_extract_lane::<1>(acbd) >= self.bailout
                     || iterations >= self.max_iterations
                 {
                     break (transmute::<v128, Complex64>(z), iterations);
@@ -206,20 +209,20 @@ impl Mandelbrot {
     }
 
     #[cfg(all(target_arch = "aarch64", target_feature = "fcma"))]
-    pub(crate) unsafe fn iterate_inner(&self, c: &Complex64) -> (Complex64, usize) {
+    pub(crate) unsafe fn iterate_inner(&self, c: &Complex32) -> (Complex32, usize) {
         use core::arch::aarch64::*;
         use core::mem::transmute;
         unsafe {
-            let c: float64x2_t = transmute(*c);
-            let mut z = vmovq_n_f64(0.0);
+            let c: float32x2_t = transmute(*c);
+            let mut z = vmov_n_f32(0.0);
             let mut iterations = 0;
-            let mut old = vmovq_n_f64(0.0);
+            let mut old = vmov_n_f32(0.0);
             let mut period = 0;
             loop {
-                z = vcmlaq_rot90_f64(vcmlaq_f64(c, z, z), z, z);
+                z = vcmla_rot90_f32(vcmla_f32(c, z, z), z, z);
 
-                if u128::MAX == transmute::<uint64x2_t, u128>(vceqq_f64(z, old)) {
-                    break (transmute::<float64x2_t, Complex64>(z), self.max_iterations);
+                if u64::MAX == transmute::<uint32x2_t, u64>(vceq_f32(z, old)) {
+                    break (transmute::<float32x2_t, Complex32>(z), self.max_iterations);
                 }
 
                 iterations += 1;
@@ -229,16 +232,16 @@ impl Mandelbrot {
                     old = z;
                 }
 
-                if vaddvq_f64(vmulq_f64(z, z)) >= self.bailout || iterations >= self.max_iterations {
-                    break (transmute::<float64x2_t, Complex64>(z), iterations);
+                if vaddv_f32(vmul_f32(z, z)) >= self.bailout || iterations >= self.max_iterations {
+                    break (transmute::<float32x2_t, Complex32>(z), iterations);
                 }
             }
         }
     }
 
-    pub fn zoom(&mut self, x: f64, y: f64, zoom_factor: f64) {
-        let width_range = Range::new(0.0, self.width() as f64);
-        let height_range = Range::new(0.0, self.height() as f64);
+    pub fn zoom(&mut self, x: f32, y: f32, zoom_factor: f32) {
+        let width_range = Range::new(0.0, self.width() as f32);
+        let height_range = Range::new(0.0, self.height() as f32);
         let selection = rect_from_position(&self.position, &self.zoom);
         let real_range = Range::new(selection.start.x, selection.end.x);
         let imaginary_range = Range::new(selection.start.y, selection.end.y);
@@ -252,42 +255,42 @@ impl Mandelbrot {
         };
     }
 
-    fn smooth(&self, z: &Complex64, iterations: usize) -> f64 {
+    fn smooth(&self, z: &Complex32, iterations: usize) -> f32 {
         if iterations < self.max_iterations {
-            let zn = f64::ln(z.norm_sqr()) / 2.0;
-            let nu = f64::ln(zn / std::f64::consts::LN_2) / std::f64::consts::LN_2;
-            return (iterations + 1) as f64 - nu;
+            let zn = f32::ln(z.norm_sqr()) / 2.0;
+            let nu = f32::ln(zn / std::f32::consts::LN_2) / std::f32::consts::LN_2;
+            return (iterations + 1) as f32 - nu;
         }
-        iterations as f64
+        iterations as f32
     }
 
-    fn exponential(&self, iterations: f64) -> f64 {
-        f64::powf(f64::powf(iterations / self.max_iterations as f64, self.exponent), 1.5)
+    fn exponential(&self, iterations: f32) -> f32 {
+        f32::powf(f32::powf(iterations / self.max_iterations as f32, self.exponent), 1.5)
     }
 
-    fn palette(&self, z: Option<&Complex64>, iterations: usize) -> Color {
+    fn palette(&self, z: Option<&Complex32>, iterations: usize) -> Color {
         let smooth = if let Some(z) = z {
             self.smooth(z, iterations)
         } else {
-            iterations as f64
+            iterations as f32
         };
         let exponential = self.exponential(smooth);
         let (_, palette) = &self.palettes[self.selected_palette];
-        palette.at(exponential as f32)
+        palette.at(exponential)
     }
 
-    fn lch(&self, z: Option<&Complex64>, iterations: usize) -> Color {
+    fn lch(&self, z: Option<&Complex32>, iterations: usize) -> Color {
         let smooth = if let Some(z) = z {
             self.smooth(z, iterations)
         } else {
-            iterations as f64
+            iterations as f32
         };
         let s = self.exponential(smooth);
-        let v = 1.0 - f64::powf(f64::cos(std::f64::consts::PI * s), 2.0);
+        let v = 1.0 - f32::powf(f32::cos(std::f32::consts::PI * s), 2.0);
         Color::from_lcha(
-            (75.0 - (75.0 * v)) as f32,
-            (28.0 + (75.0 - (75.0 * v))) as f32,
-            (f64::powf(360.0 * s, 1.5) % 360.0) as f32,
+            75.0 - (75.0 * v),
+            28.0 + (75.0 - (75.0 * v)),
+            f32::powf(360.0 * s, 1.5) % 360.0,
             1.0,
         )
     }
@@ -329,10 +332,10 @@ impl Default for Mandelbrot {
             selected_resolution: if cfg!(debug_assertions) { 0 } else { 3 },
             position: Vector { x: -0.5, y: 0.0 },
             zoom: Vector { x: 2.0, y: 1.125 },
-            rendering: Rendering::Smooth,
-            bailout: f64::powf(2.0, 16.0),
+            rendering: Rendering::Fast,
+            bailout: f32::powf(2.0, 16.0),
             max_iterations: 1000,
-            chunk_size: usize::pow(2, 21),
+            chunk_size: usize::pow(2, 8),
             period_length: 20,
             coloring: Coloring::LCH,
             exponent: 1.0,

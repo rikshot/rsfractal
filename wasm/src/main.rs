@@ -78,10 +78,10 @@ fn App() -> impl IntoView {
         if let Some(canvas) = canvas_ref.get() {
             let element: Element = event.target().unwrap().dyn_into().unwrap();
             let rect = element.get_bounding_client_rect();
-            let scale_x = canvas.width() as f64 / rect.width();
-            let scale_y = canvas.height() as f64 / rect.height();
-            let x = (event.client_x() as f64 - rect.left()) * scale_x;
-            let y = (event.client_y() as f64 - rect.top()) * scale_y;
+            let scale_x = canvas.width() as f32 / rect.width() as f32;
+            let scale_y = canvas.height() as f32 / rect.height() as f32;
+            let x = (event.client_x() as f32 - rect.left() as f32) * scale_x;
+            let y = (event.client_y() as f32 - rect.top() as f32) * scale_y;
             set_mandelbrot.update(|mandelbrot| {
                 let zoom_factor = if event.shift_key() { 1.0 / 0.25 } else { 0.25 };
                 mandelbrot.zoom(x, y, zoom_factor);
