@@ -168,7 +168,7 @@ impl Mandelbrot {
         (z, iterations)
     }
 
-    #[cfg(all(target_family = "wasm", target_feature = "relaxed-simd"))]
+    #[cfg(all(target_family = "wasm", target_feature = "simd128"))]
     pub(crate) unsafe fn iterate_inner(&self, c: &Complex64) -> (Complex64, usize) {
         use core::arch::wasm32::*;
         use core::mem::transmute;
@@ -183,7 +183,7 @@ impl Mandelbrot {
                 let adbc = f64x2_mul(z, f64x2(f64x2_extract_lane::<1>(z), f64x2_extract_lane::<0>(z)));
                 let acad = f64x2(f64x2_extract_lane::<0>(acbd), f64x2_extract_lane::<0>(adbc));
                 let bdbc = f64x2(f64x2_extract_lane::<1>(acbd), f64x2_extract_lane::<1>(adbc));
-                z = f64x2_add(f64x2_relaxed_madd(bdbc, f64x2(-1.0, 1.0), acad), c);
+                z = f64x2_add(f64x2_add(f64x2_mul(bdbc, f64x2(-1.0, 1.0)), acad), c);
 
                 if u128::MAX == transmute::<v128, u128>(f64x2_eq(z, old)) {
                     break (transmute::<v128, Complex64>(z), self.max_iterations);
