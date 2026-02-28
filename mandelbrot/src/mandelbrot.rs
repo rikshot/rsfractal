@@ -75,8 +75,27 @@ impl Mandelbrot {
         }
     }
 
+    const SMOOTH_LUT_SIZE: usize = 4096;
+
+    fn build_smooth_lut(&self) -> Vec<[u8; 4]> {
+        (0..Self::SMOOTH_LUT_SIZE)
+            .map(|i| {
+                let s = i as f32 / Self::SMOOTH_LUT_SIZE as f32;
+                self.color_at(s).to_rgba8()
+            })
+            .collect()
+    }
+
+    fn build_fast_lut(&self) -> Vec<[u8; 4]> {
+        (0..self.max_iterations)
+            .map(|i| self.color(None, i).to_rgba8())
+            .collect()
+    }
+
     fn render_smooth(&self, pixels: &mut [u8]) {
         let [width_range, height_range, real_range, imaginary_range] = self.ranges();
+        let lut = self.build_smooth_lut();
+        let max_index = (Self::SMOOTH_LUT_SIZE - 1) as f32;
 
         pixels
             .par_chunks_exact_mut(4)
@@ -93,7 +112,9 @@ impl Mandelbrot {
 
                 let (z, iterations) = self.iterate(&c);
                 if iterations < self.max_iterations {
-                    pixel.copy_from_slice(&self.color(Some(&z), iterations).to_rgba8());
+                    let s = self.exponential(self.smooth(&z, iterations));
+                    let idx = (s * max_index) as usize;
+                    pixel.copy_from_slice(&lut[idx.min(Self::SMOOTH_LUT_SIZE - 1)]);
                 } else {
                     pixel.copy_from_slice(&[0, 0, 0, 0xFF]);
                 }
@@ -101,6 +122,7 @@ impl Mandelbrot {
     }
 
     fn render_fast(&self, pixels: &mut [u8]) {
+        let lut = self.build_fast_lut();
         let rows = self.height / rayon::current_num_threads();
         let chunk_size = self.width * rows * 4;
         pixels
@@ -113,7 +135,7 @@ impl Mandelbrot {
                 pixels.chunks_exact_mut(4).enumerate().for_each(|(index, pixel)| {
                     let iterations = data[index];
                     if iterations < self.max_iterations {
-                        pixel.copy_from_slice(&self.color(None, iterations).to_rgba8());
+                        pixel.copy_from_slice(&lut[iterations]);
                     } else {
                         pixel.copy_from_slice(&[0, 0, 0, 0xFF]);
                     }
@@ -173,9 +195,12 @@ impl Mandelbrot {
                 let im = f32x4_extract_lane::<1>(z);
                 let re2 = re * re;
                 let im2 = im * im;
-                z = f32x4(re2 - im2 + f32x4_extract_lane::<0>(c),
-                          2.0 * re * im + f32x4_extract_lane::<1>(c),
-                          0.0, 0.0);
+                z = f32x4(
+                    re2 - im2 + f32x4_extract_lane::<0>(c),
+                    2.0 * re * im + f32x4_extract_lane::<1>(c),
+                    0.0,
+                    0.0,
+                );
 
                 if f32x4_extract_lane::<0>(z) == f32x4_extract_lane::<0>(old)
                     && f32x4_extract_lane::<1>(z) == f32x4_extract_lane::<1>(old)
