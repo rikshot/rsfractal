@@ -133,7 +133,7 @@ impl Mandelbrot {
                 let mut boundary_scanner = BoundaryScanner::new(self, start, start + rows);
                 let data = boundary_scanner.run();
                 pixels.chunks_exact_mut(4).enumerate().for_each(|(index, pixel)| {
-                    let iterations = data[index];
+                    let iterations = data[index] as usize;
                     if iterations < self.max_iterations {
                         pixel.copy_from_slice(&lut[iterations]);
                     } else {
@@ -143,14 +143,18 @@ impl Mandelbrot {
             });
     }
 
-    pub(crate) fn iterate(&self, c: &Complex32) -> (Complex32, usize) {
+    #[inline]
+    fn is_interior(c: &Complex32) -> bool {
         let im2 = c.im * c.im;
         let mut q = c.re - 0.25;
         q *= q;
         q += im2;
-
         let p2 = c.re + 1.0;
-        if q * (q + (c.re - 0.25)) < 0.25 * im2 || p2 * p2 + im2 < 0.0625 {
+        q * (q + (c.re - 0.25)) < 0.25 * im2 || p2 * p2 + im2 < 0.0625
+    }
+
+    pub(crate) fn iterate(&self, c: &Complex32) -> (Complex32, usize) {
+        if Self::is_interior(c) {
             (Complex32::ZERO, self.max_iterations)
         } else {
             unsafe { self.iterate_inner(c) }

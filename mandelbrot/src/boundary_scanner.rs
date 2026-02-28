@@ -7,6 +7,30 @@ use crate::{
     range::Range,
 };
 
+struct BitVec {
+    data: Vec<u64>,
+}
+
+impl BitVec {
+    fn new(size: usize) -> Self {
+        Self {
+            data: vec![0; (size + 63) / 64],
+        }
+    }
+
+    #[inline]
+    fn get(&self, index: usize) -> bool {
+        let (word, bit) = (index / 64, index % 64);
+        self.data[word] & (1 << bit) != 0
+    }
+
+    #[inline]
+    fn set(&mut self, index: usize) {
+        let (word, bit) = (index / 64, index % 64);
+        self.data[word] |= 1 << bit;
+    }
+}
+
 pub struct BoundaryScanner<'a> {
     pub(crate) mandelbrot: &'a Mandelbrot,
     pub(crate) start: usize,
@@ -15,9 +39,9 @@ pub struct BoundaryScanner<'a> {
     pub(crate) height_range: Range,
     pub(crate) real_range: Range,
     pub(crate) imaginary_range: Range,
-    pub(crate) data: Vec<usize>,
-    pub(crate) queued: Vec<bool>,
-    pub(crate) loaded: Vec<bool>,
+    pub(crate) data: Vec<u32>,
+    queued: BitVec,
+    loaded: BitVec,
     pub(crate) queue: VecDeque<usize>,
 }
 
@@ -39,8 +63,8 @@ impl<'a> BoundaryScanner<'a> {
             real_range: Range::new(rect.start.x, rect.end.x),
             imaginary_range: Range::new(rect.start.y, rect.end.y),
             data: vec![0; size],
-            queued: vec![false; size],
-            loaded: vec![false; size],
+            queued: BitVec::new(size),
+            loaded: BitVec::new(size),
             queue: VecDeque::with_capacity(queue_size),
         }
     }
@@ -52,16 +76,16 @@ impl<'a> BoundaryScanner<'a> {
 
     fn add_queue(&mut self, index: usize) {
         let local_index = self.local_index(index);
-        if self.queued[local_index] {
+        if self.queued.get(local_index) {
             return;
         }
-        self.queued[local_index] = true;
+        self.queued.set(local_index);
         self.queue.push_back(index);
     }
 
-    fn load(&mut self, index: usize) -> usize {
+    fn load(&mut self, index: usize) -> u32 {
         let local_index = self.local_index(index);
-        if self.loaded[local_index] {
+        if self.loaded.get(local_index) {
             return self.data[local_index];
         }
 
@@ -74,9 +98,9 @@ impl<'a> BoundaryScanner<'a> {
         );
 
         let (_, result) = self.mandelbrot.iterate(&c);
-        self.loaded[local_index] = true;
-        self.data[local_index] = result;
-        result
+        self.loaded.set(local_index);
+        self.data[local_index] = result as u32;
+        result as u32
     }
 
     fn scan(&mut self, index: usize) {
@@ -118,7 +142,7 @@ impl<'a> BoundaryScanner<'a> {
         }
     }
 
-    pub fn run(&mut self) -> &[usize] {
+    pub fn run(&mut self) -> &[u32] {
         let width = self.mandelbrot.width;
 
         for y in self.start..self.end {
@@ -136,9 +160,9 @@ impl<'a> BoundaryScanner<'a> {
 
         for index in self.start * width..self.end * width - 1 {
             let local_index = self.local_index(index);
-            if self.loaded[local_index] && !self.loaded[local_index + 1] {
+            if self.loaded.get(local_index) && !self.loaded.get(local_index + 1) {
                 self.data[local_index + 1] = self.data[local_index];
-                self.loaded[local_index + 1] = true;
+                self.loaded.set(local_index + 1);
             }
         }
 
