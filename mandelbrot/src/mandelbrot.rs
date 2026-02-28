@@ -40,7 +40,7 @@ pub enum Coloring {
     LCH,
 }
 
-pub(crate) fn rect_from_position(position: &Vector, zoom: &Vector) -> Rectangle {
+pub fn rect_from_position(position: &Vector, zoom: &Vector) -> Rectangle {
     Rectangle::new(
         Vector::new(position.x - zoom.x, position.y - zoom.y),
         Vector::new(position.x + zoom.x, position.y + zoom.y),

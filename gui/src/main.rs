@@ -3,11 +3,9 @@ use std::sync::Arc;
 use anyhow::Result;
 use pixels::{Pixels, SurfaceTexture};
 use renderer::MandelbrotRenderer;
-use rsfractal_mandelbrot::mandelbrot::Mandelbrot;
-use rsfractal_mandelbrot::range::Range;
-use rsfractal_mandelbrot::vector::Vector;
+use rsfractal_mandelbrot::mandelbrot::{Mandelbrot, rect_from_position};
 use winit::application::ApplicationHandler;
-use winit::dpi::{LogicalSize, PhysicalPosition};
+use winit::dpi::LogicalSize;
 use winit::event::{DeviceEvent, ElementState, KeyEvent, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::EventLoop;
 use winit::keyboard::{KeyCode, PhysicalKey};
@@ -64,24 +62,19 @@ impl ApplicationHandler for App<'_> {
         if let Some(window) = &self.window {
             if let DeviceEvent::MouseMotion { delta } = event {
                 if self.mouse_button {
-                    self.mandelbrot.position.x -= delta.0 as f32 / 500.0;
-                    self.mandelbrot.position.y -= delta.1 as f32 / 500.0;
+                    let rect = rect_from_position(&self.mandelbrot.position, &self.mandelbrot.zoom);
+                    self.mandelbrot.position.x -= delta.0 as f32 * rect.width() / 1000.0;
+                    self.mandelbrot.position.y -= delta.1 as f32 * rect.height() / 1000.0;
                     window.request_redraw();
                 }
             } else if let DeviceEvent::MouseWheel { delta } = event {
-                match delta {
-                    MouseScrollDelta::LineDelta(x, y) => {
-                        self.mandelbrot.zoom.x += x;
-                        self.mandelbrot.zoom.y += y;
-                    }
-                    MouseScrollDelta::PixelDelta(physical_position) => {
-                        if physical_position.y > 0.0 {
-                            self.mandelbrot.zoom.x *= 1.01;
-                            self.mandelbrot.zoom.y *= 1.01;
-                        } else if physical_position.y < 0.0 {
-                            self.mandelbrot.zoom.x *= 0.99;
-                            self.mandelbrot.zoom.y *= 0.99;
-                        }
+                if let MouseScrollDelta::PixelDelta(physical_position) = delta {
+                    if physical_position.y > 0.0 {
+                        self.mandelbrot.zoom.x *= 0.9;
+                        self.mandelbrot.zoom.y *= 0.9;
+                    } else if physical_position.y < 0.0 {
+                        self.mandelbrot.zoom.x *= 1.1;
+                        self.mandelbrot.zoom.y *= 1.1;
                     }
                 }
                 window.request_redraw();
@@ -100,13 +93,13 @@ impl ApplicationHandler for App<'_> {
                 event_loop.exit();
             }
             WindowEvent::Resized(size) => {
-                if let Some(window) = &self.window {
-                    if let Some(pixels) = &mut self.pixels {
-                        if pixels.resize_surface(size.width, size.height).is_err() {
-                            event_loop.exit();
-                        } else {
-                            window.request_redraw();
-                        }
+                if let Some(window) = &self.window
+                    && let Some(pixels) = &mut self.pixels
+                {
+                    if pixels.resize_surface(size.width, size.height).is_err() {
+                        event_loop.exit();
+                    } else {
+                        window.request_redraw();
                     }
                 }
             }
@@ -124,16 +117,16 @@ impl ApplicationHandler for App<'_> {
                 self.mouse_button = state == ElementState::Pressed;
             }
             WindowEvent::RedrawRequested => {
-                if let Some(pixels) = &mut self.pixels {
-                    if let Some(renderer) = &self.renderer {
-                        pixels
-                            .render_with(|encoder, render_target, context| {
-                                renderer.set_ranges(&context.queue, &self.mandelbrot.ranges());
-                                renderer.render(encoder, render_target, context.scaling_renderer.clip_rect());
-                                Ok(())
-                            })
-                            .unwrap();
-                    }
+                if let Some(pixels) = &mut self.pixels
+                    && let Some(renderer) = &self.renderer
+                {
+                    pixels
+                        .render_with(|encoder, render_target, context| {
+                            renderer.set_ranges(&context.queue, &self.mandelbrot.ranges());
+                            renderer.render(encoder, render_target, context.scaling_renderer.clip_rect());
+                            Ok(())
+                        })
+                        .unwrap();
                 }
             }
             _ => (),

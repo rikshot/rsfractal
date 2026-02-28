@@ -48,29 +48,29 @@ fn App() -> impl IntoView {
     };
 
     Effect::new(move || {
-        if let Some(canvas) = canvas_ref.get() {
-            if let Some(pixels) = action.value().get() {
-                let width = canvas.width();
-                let height = canvas.height();
-                let size = width * height * 4;
-                let data = Uint8ClampedArray::new_with_length(size);
-                data.copy_from(&pixels);
-                let image_data = ImageData::new_with_js_u8_clamped_array_and_sh(&data, width, height).unwrap();
-                let context: CanvasRenderingContext2d = canvas
-                    .get_context_with_context_options(
-                        "2d",
-                        &serde_wasm_bindgen::to_value(&ContextAttributes {
-                            alpha: false,
-                            desynchronized: true,
-                        })
-                        .unwrap(),
-                    )
-                    .unwrap()
-                    .unwrap()
-                    .unchecked_into::<CanvasRenderingContext2d>();
-                context.set_image_smoothing_enabled(false);
-                context.put_image_data(&image_data, 0.0, 0.0).unwrap();
-            }
+        if let Some(canvas) = canvas_ref.get()
+            && let Some(pixels) = action.value().get()
+        {
+            let width = canvas.width();
+            let height = canvas.height();
+            let size = width * height * 4;
+            let data = Uint8ClampedArray::new_with_length(size);
+            data.copy_from(&pixels);
+            let image_data = ImageData::new_with_js_u8_clamped_array_and_sh(&data, width, height).unwrap();
+            let context: CanvasRenderingContext2d = canvas
+                .get_context_with_context_options(
+                    "2d",
+                    &serde_wasm_bindgen::to_value(&ContextAttributes {
+                        alpha: false,
+                        desynchronized: true,
+                    })
+                    .unwrap(),
+                )
+                .unwrap()
+                .unwrap()
+                .unchecked_into::<CanvasRenderingContext2d>();
+            context.set_image_smoothing_enabled(false);
+            context.put_image_data(&image_data, 0.0, 0.0).unwrap();
         }
     });
 
