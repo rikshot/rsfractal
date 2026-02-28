@@ -31,7 +31,7 @@ fn App() -> impl IntoView {
         let (sender, receiver) = oneshot::channel::<Arc<Vec<u8>>>();
         async move {
             rayon::spawn(move || {
-                let size = mandelbrot.width() * mandelbrot.height() * 4;
+                let size = mandelbrot.width * mandelbrot.height * 4;
                 let mut pixels = vec![0u8; size];
                 mandelbrot.render(&mut pixels);
                 let pixels = Arc::new(pixels);
@@ -94,8 +94,8 @@ fn App() -> impl IntoView {
         <main class="size-full">
             <canvas
                 class="absolute w-full top-1/2 -translate-y-1/2"
-                width=move || mandelbrot.read().width()
-                height=move || mandelbrot.read().height()
+                width=move || mandelbrot.read().width
+                height=move || mandelbrot.read().height
                 node_ref=canvas_ref
                 on:click=on_click
             />
@@ -123,33 +123,36 @@ fn App() -> impl IntoView {
                 <Select
                     attr:id="resolution"
                     on:change=move |ev| {
-                        let value = event_target_value(&ev).parse().unwrap();
-                        set_mandelbrot.update(|mandelbrot| mandelbrot.selected_resolution = value);
-                        render();
+                        let value = event_target_value(&ev);
+                        let parts: Vec<usize> = value.split('x').filter_map(|s| s.parse().ok()).collect();
+                        if parts.len() == 2 {
+                            set_mandelbrot.update(|mandelbrot| mandelbrot.set_resolution(parts[0], parts[1]));
+                            render();
+                        }
                     }
                     prop:disabled=move || action.pending().get()
-                    prop:value=move || { mandelbrot.read().selected_resolution.to_string() }
+                    prop:value=move || { format!("{}x{}", mandelbrot.read().width, mandelbrot.read().height) }
                 >
-                    {move || {
-                        mandelbrot
-                            .read()
-                            .resolutions()
+                    {
+                        const RESOLUTIONS: &[(usize, usize)] = &[
+                            (320, 180), (640, 360), (960, 540), (1280, 720),
+                            (1600, 900), (1920, 1080), (3840, 2160),
+                        ];
+                        RESOLUTIONS
                             .iter()
-                            .enumerate()
-                            .map(|(index, (width, height))| {
+                            .map(|(w, h)| {
+                                let value = format!("{w}x{h}");
                                 view! {
                                     <option
-                                        value=index.to_string()
-                                        selected=index == mandelbrot.read().selected_resolution
+                                        value=value.clone()
+                                        selected=move || mandelbrot.read().width == *w && mandelbrot.read().height == *h
                                     >
-                                        {*width}
-                                        "x"
-                                        {*height}
+                                        {value}
                                     </option>
                                 }
                             })
                             .collect_view()
-                    }}
+                    }
                 </Select>
                 <br />
                 <label class="text-base" for="rendering">

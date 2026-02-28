@@ -12,6 +12,7 @@ license.workspace = true
 [dependencies]
 num = "*"
 rayon = "*"
+bytemuck = { version = "*", features = ["derive"] }
 colorgrad = { version = "*", features = ["lab"] }
 image = { version = "*", default-features = false, features = [
     "png",

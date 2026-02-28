@@ -1,13 +1,18 @@
-#[derive(Clone, Copy)]
-#[repr(C, align(16))]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+#[repr(C)]
 pub struct Range {
     min: f32,
     max: f32,
+    _padding: [f32; 2],
 }
 
 impl Range {
     pub fn new(min: f32, max: f32) -> Self {
-        Self { min, max }
+        Self {
+            min,
+            max,
+            _padding: [0.0; 2],
+        }
     }
 
     pub fn scale(input: &Self, value: f32, output: &Self) -> f32 {

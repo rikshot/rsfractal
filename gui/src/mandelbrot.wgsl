@@ -20,33 +20,34 @@ struct Complex {
     im: f32
 }
 
-struct Rectangle {
-    start: vec2f,
-    end: vec2f
-}
-
-struct Ranges {
-    width_range: Range,
-    @align(16) height_range: Range,
-    @align(16) real_range: Range,
-    @align(16) imaginary_range: Range
+struct Params {
+    real_range: Range,
+    @align(16) imaginary_range: Range,
+    @align(16) viewport: vec2f,
+    bailout: f32,
+    max_iterations: u32,
+    exponent: f32,
 }
 
 @group(0) @binding(0)
-var<uniform> ranges: Ranges;
+var<uniform> params: Params;
+
+@group(0) @binding(1)
+var color_texture: texture_2d<f32>;
+
+@group(0) @binding(2)
+var color_sampler: sampler;
 
 @fragment
 fn fs_main(@builtin(position) input: vec4f) -> @location(0) vec4f {
-    let viewport_width_range = Range(0.0, 2560.0);
-    let viewport_height_range = Range(0.0, 1440.0);
-
-    let c = Complex(scale(ranges.width_range, scale(viewport_width_range, input.x, ranges.width_range), ranges.real_range), scale(ranges.height_range, scale(viewport_height_range, input.y, ranges.height_range), ranges.imaginary_range));
+    let c = Complex(
+        scale(Range(0.0, params.viewport.x), input.x, params.real_range),
+        scale(Range(0.0, params.viewport.y), input.y, params.imaginary_range)
+    );
 
     var temp: f32 = 0.0;
     var z = Complex(0.0, 0.0);
-    var old = Complex(0.0, 0.0);
-    var iterations: i32 = 0;
-    var period: i32 = 0;
+    var iterations: u32 = 0u;
 
     var re2 = 0.0;
     var im2 = c.im * c.im;
@@ -54,37 +55,30 @@ fn fs_main(@builtin(position) input: vec4f) -> @location(0) vec4f {
     q *= q;
     q += im2;
 
-    if q * (q + (c.re - 0.25)) < 0.25 * im2 {
-        iterations = 1000;
+    let p2 = c.re + 1.0;
+    if q * (q + (c.re - 0.25)) < 0.25 * im2 || p2 * p2 + im2 < 0.0625 {
+        iterations = params.max_iterations;
     } else {
-        while re2 + im2 <= 65536.0 && iterations < 1000 {
+        while re2 + im2 <= params.bailout && iterations < params.max_iterations {
             re2 = z.re * z.re;
             im2 = z.im * z.im;
             temp = re2 - im2 + c.re;
             z.im = 2.0 * z.re * z.im + c.im;
             z.re = temp;
-            if z.re == old.re && z.im == old.im {
-                iterations = 1000;
-				break;
-            }
-            iterations += 1;
-            period += 1;
-            if period > 10 {
-                period = 0;
-                old = z;
-            }
+            iterations += 1u;
         }
     }
 
-    if iterations == 1000 {
-        temp = 1000.0;
-    } else {
-        let ln2 = log(2.0);
-        let zn = log(re2 + im2) / 2.0;
-        let nu = log(zn / ln2) / ln2;
-        temp = f32(iterations) + 1.0 - nu;
+    if iterations == params.max_iterations {
+        return vec4f(0.0, 0.0, 0.0, 1.0);
     }
 
-    var v = temp / 1000.0;
-    return vec4f(v, v, v, 1.0);
+    let ln2 = log(2.0);
+    let zn = log(re2 + im2) / 2.0;
+    let nu = log(zn / ln2) / ln2;
+    temp = f32(iterations) + 1.0 - nu;
+
+    let s = pow(temp / f32(params.max_iterations), params.exponent);
+
+    return textureSampleLevel(color_texture, color_sampler, vec2f(s, 0.5), 0.0);
 }

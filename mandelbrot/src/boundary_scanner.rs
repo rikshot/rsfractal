@@ -23,7 +23,7 @@ pub struct BoundaryScanner<'a> {
 
 impl<'a> BoundaryScanner<'a> {
     pub fn new(mandelbrot: &'a Mandelbrot, start: usize, end: usize) -> Self {
-        let width = mandelbrot.width();
+        let width = mandelbrot.width;
         let height = end - start;
         let size = width * height;
         let queue_size = (width + height) * 2;
@@ -34,8 +34,8 @@ impl<'a> BoundaryScanner<'a> {
             mandelbrot,
             start,
             end,
-            width_range: Range::new(0.0, mandelbrot.width() as f32),
-            height_range: Range::new(0.0, mandelbrot.height() as f32),
+            width_range: Range::new(0.0, mandelbrot.width as f32),
+            height_range: Range::new(0.0, mandelbrot.height as f32),
             real_range: Range::new(rect.start.x, rect.end.x),
             imaginary_range: Range::new(rect.start.y, rect.end.y),
             data: vec![0; size],
@@ -47,7 +47,7 @@ impl<'a> BoundaryScanner<'a> {
 
     #[inline]
     fn local_index(&self, index: usize) -> usize {
-        index - self.start * self.mandelbrot.width()
+        index - self.start * self.mandelbrot.width
     }
 
     fn add_queue(&mut self, index: usize) {
@@ -65,8 +65,8 @@ impl<'a> BoundaryScanner<'a> {
             return self.data[local_index];
         }
 
-        let x = (index % self.mandelbrot.width()) as f32;
-        let y = (index / self.mandelbrot.width()) as f32;
+        let x = (index % self.mandelbrot.width) as f32;
+        let y = (index / self.mandelbrot.width) as f32;
 
         let c = Complex32::new(
             Range::scale(&self.width_range, x, &self.real_range),
@@ -80,7 +80,7 @@ impl<'a> BoundaryScanner<'a> {
     }
 
     fn scan(&mut self, index: usize) {
-        let width = self.mandelbrot.width();
+        let width = self.mandelbrot.width;
         let x = index % width;
         let y = index / width;
         let center = self.load(index);
@@ -119,7 +119,7 @@ impl<'a> BoundaryScanner<'a> {
     }
 
     pub fn run(&mut self) -> &[usize] {
-        let width = self.mandelbrot.width();
+        let width = self.mandelbrot.width;
 
         for y in self.start..self.end {
             self.add_queue(y * width);

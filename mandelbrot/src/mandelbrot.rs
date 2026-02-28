@@ -13,8 +13,8 @@ use super::vector::Vector;
 
 #[derive(Debug, Clone)]
 pub struct Mandelbrot {
-    resolutions: Vec<(usize, usize)>,
-    pub selected_resolution: usize,
+    pub width: usize,
+    pub height: usize,
     pub position: Vector,
     pub zoom: Vector,
     pub rendering: Rendering,
@@ -48,16 +48,9 @@ pub fn rect_from_position(position: &Vector, zoom: &Vector) -> Rectangle {
 }
 
 impl Mandelbrot {
-    pub fn width(&self) -> usize {
-        self.resolutions[self.selected_resolution].0
-    }
-
-    pub fn height(&self) -> usize {
-        self.resolutions[self.selected_resolution].1
-    }
-
-    pub fn resolutions(&self) -> &[(usize, usize)] {
-        &self.resolutions
+    pub fn set_resolution(&mut self, width: usize, height: usize) {
+        self.width = width;
+        self.height = height;
     }
 
     pub fn palettes(&self) -> &[(String, CatmullRomGradient)] {
@@ -65,8 +58,8 @@ impl Mandelbrot {
     }
 
     pub fn ranges(&self) -> [Range; 4] {
-        let width_range = Range::new(0.0, self.width() as f32);
-        let height_range = Range::new(0.0, self.height() as f32);
+        let width_range = Range::new(0.0, self.width as f32);
+        let height_range = Range::new(0.0, self.height as f32);
 
         let rect = rect_from_position(&self.position, &self.zoom);
         let real_range = Range::new(rect.start.x, rect.end.x);
@@ -90,8 +83,8 @@ impl Mandelbrot {
             .enumerate()
             .by_uniform_blocks(self.chunk_size)
             .for_each(|(index, pixel)| {
-                let x = (index % self.width()) as f32;
-                let y = (index / self.width()) as f32;
+                let x = (index % self.width) as f32;
+                let y = (index / self.width) as f32;
 
                 let c = Complex32::new(
                     Range::scale(&width_range, x, &real_range),
@@ -100,11 +93,7 @@ impl Mandelbrot {
 
                 let (z, iterations) = self.iterate(&c);
                 if iterations < self.max_iterations {
-                    let color = match self.coloring {
-                        Coloring::Palette => self.palette(Some(&z), iterations),
-                        Coloring::LCH => self.lch(Some(&z), iterations),
-                    };
-                    pixel.copy_from_slice(&color.to_rgba8());
+                    pixel.copy_from_slice(&self.color(Some(&z), iterations).to_rgba8());
                 } else {
                     pixel.copy_from_slice(&[0, 0, 0, 0xFF]);
                 }
@@ -112,8 +101,8 @@ impl Mandelbrot {
     }
 
     fn render_fast(&self, pixels: &mut [u8]) {
-        let rows = self.height() / rayon::current_num_threads();
-        let chunk_size = self.width() * rows * 4;
+        let rows = self.height / rayon::current_num_threads();
+        let chunk_size = self.width * rows * 4;
         pixels
             .par_chunks_exact_mut(chunk_size)
             .enumerate()
@@ -124,11 +113,7 @@ impl Mandelbrot {
                 pixels.chunks_exact_mut(4).enumerate().for_each(|(index, pixel)| {
                     let iterations = data[index];
                     if iterations < self.max_iterations {
-                        let color = match self.coloring {
-                            Coloring::Palette => self.palette(None, iterations),
-                            Coloring::LCH => self.lch(None, iterations),
-                        };
-                        pixel.copy_from_slice(&color.to_rgba8());
+                        pixel.copy_from_slice(&self.color(None, iterations).to_rgba8());
                     } else {
                         pixel.copy_from_slice(&[0, 0, 0, 0xFF]);
                     }
@@ -142,7 +127,8 @@ impl Mandelbrot {
         q *= q;
         q += im2;
 
-        if q * (q + (c.re - 0.25)) < 0.25 * im2 {
+        let p2 = c.re + 1.0;
+        if q * (q + (c.re - 0.25)) < 0.25 * im2 || p2 * p2 + im2 < 0.0625 {
             (Complex32::ZERO, self.max_iterations)
         } else {
             unsafe { self.iterate_inner(c) }
@@ -240,8 +226,8 @@ impl Mandelbrot {
     }
 
     pub fn zoom(&mut self, x: f32, y: f32, zoom_factor: f32) {
-        let width_range = Range::new(0.0, self.width() as f32);
-        let height_range = Range::new(0.0, self.height() as f32);
+        let width_range = Range::new(0.0, self.width as f32);
+        let height_range = Range::new(0.0, self.height as f32);
         let selection = rect_from_position(&self.position, &self.zoom);
         let real_range = Range::new(selection.start.x, selection.end.x);
         let imaginary_range = Range::new(selection.start.y, selection.end.y);
@@ -265,52 +251,43 @@ impl Mandelbrot {
     }
 
     fn exponential(&self, iterations: f32) -> f32 {
-        f32::powf(f32::powf(iterations / self.max_iterations as f32, self.exponent), 1.5)
+        f32::powf(iterations / self.max_iterations as f32, self.exponent)
     }
 
-    fn palette(&self, z: Option<&Complex32>, iterations: usize) -> Color {
+    pub fn color_at(&self, s: f32) -> Color {
+        match self.coloring {
+            Coloring::Palette => {
+                let (_, palette) = &self.palettes[self.selected_palette];
+                palette.at(f32::powf(s, 1.0 / 3.0))
+            }
+            Coloring::LCH => {
+                let s = f32::powf(s, 1.5);
+                let v = 1.0 - f32::powf(f32::cos(std::f32::consts::PI * s), 2.0);
+                Color::from_lcha(
+                    75.0 - (75.0 * v),
+                    28.0 + (75.0 - (75.0 * v)),
+                    f32::powf(360.0 * s, 1.5) % 360.0,
+                    1.0,
+                )
+            }
+        }
+    }
+
+    fn color(&self, z: Option<&Complex32>, iterations: usize) -> Color {
         let smooth = if let Some(z) = z {
             self.smooth(z, iterations)
         } else {
             iterations as f32
         };
-        let exponential = self.exponential(smooth);
-        let (_, palette) = &self.palettes[self.selected_palette];
-        palette.at(exponential)
-    }
-
-    fn lch(&self, z: Option<&Complex32>, iterations: usize) -> Color {
-        let smooth = if let Some(z) = z {
-            self.smooth(z, iterations)
-        } else {
-            iterations as f32
-        };
-        let s = self.exponential(smooth);
-        let v = 1.0 - f32::powf(f32::cos(std::f32::consts::PI * s), 2.0);
-        Color::from_lcha(
-            75.0 - (75.0 * v),
-            28.0 + (75.0 - (75.0 * v)),
-            f32::powf(360.0 * s, 1.5) % 360.0,
-            1.0,
-        )
+        self.color_at(self.exponential(smooth))
     }
 }
 
 impl Default for Mandelbrot {
     fn default() -> Self {
-        let resolutions = vec![
-            (320, 180),
-            (640, 360),
-            (960, 540),
-            (1280, 720),
-            (1600, 900),
-            (1920, 1080),
-            (3840, 2160),
-        ];
-
         let palettes = [
             ("Rust", vec!["#3e0000", "#6b1d09", "#9a542e", "#bf935c", "#d0c8a8"]),
-            ("Cold Teal", vec!["#E3FDFD", "#CBF1F5", "#A6E3E9", "#71C9CE"]),
+            ("Cold Teal", vec!["#1B3A4B", "#3D6B7E", "#71C9CE", "#A6E3E9", "#E3FDFD"]),
             ("Sunset", vec!["#F9ED69", "#F08A5D", "#B83B5E", "#6A2C70"]),
         ];
         let palettes: Vec<(String, CatmullRomGradient)> = palettes
@@ -328,8 +305,8 @@ impl Default for Mandelbrot {
             .collect();
 
         Self {
-            resolutions,
-            selected_resolution: if cfg!(debug_assertions) { 0 } else { 3 },
+            width: 1280,
+            height: 720,
             position: Vector { x: -0.5, y: 0.0 },
             zoom: Vector { x: 2.0, y: 1.125 },
             rendering: Rendering::Fast,
