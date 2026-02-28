@@ -44,11 +44,21 @@ impl App<'_> {
                 Coloring::LCH => "LCH".to_string(),
             };
             let iterations = self.mandelbrot.max_iterations;
+
+            #[cfg(feature = "perturbation")]
+            let perturbation_str = if self.mandelbrot.perturbation_active {
+                " | Perturbation"
+            } else {
+                ""
+            };
+            #[cfg(not(feature = "perturbation"))]
+            let perturbation_str = "";
+
             if self.gpu_rendering {
-                window.set_title(&format!("rsfractal | (M)ode: {renderer} | (C)oloring: {coloring} | Iterations(↑↓): {iterations} | {fps:.1} fps"));
+                window.set_title(&format!("rsfractal | (M)ode: {renderer} | (C)oloring: {coloring} | Iterations(↑↓): {iterations}{perturbation_str} | {fps:.1} fps"));
             } else {
                 let rendering = &self.mandelbrot.rendering;
-                window.set_title(&format!("rsfractal | (M)ode: {renderer} | (R)endering: {rendering} | (C)oloring: {coloring} | Iterations(↑↓): {iterations} | {fps:.1} fps"));
+                window.set_title(&format!("rsfractal | (M)ode: {renderer} | (R)endering: {rendering} | (C)oloring: {coloring} | Iterations(↑↓): {iterations}{perturbation_str} | {fps:.1} fps"));
             }
         }
     }
@@ -93,9 +103,7 @@ impl ApplicationHandler for App<'_> {
             && let DeviceEvent::MouseMotion { delta } = event
             && self.mouse_button
         {
-            let rect = rect_from_position(&self.mandelbrot.position, &self.mandelbrot.zoom);
-            self.mandelbrot.position.x -= delta.0 as f32 * rect.width() / 1000.0;
-            self.mandelbrot.position.y -= delta.1 as f32 * rect.height() / 1000.0;
+            self.mandelbrot.pan(delta.0, delta.1);
             window.request_redraw();
         }
     }
@@ -187,6 +195,8 @@ impl ApplicationHandler for App<'_> {
                 }
                 KeyCode::ArrowUp => {
                     self.mandelbrot.max_iterations = (self.mandelbrot.max_iterations * 2).min(100000);
+                    #[cfg(feature = "perturbation")]
+                    { self.mandelbrot.perturbation_dirty = true; }
                     self.update_title();
                     if let Some(window) = &self.window {
                         window.request_redraw();
@@ -194,6 +204,8 @@ impl ApplicationHandler for App<'_> {
                 }
                 KeyCode::ArrowDown => {
                     self.mandelbrot.max_iterations = (self.mandelbrot.max_iterations / 2).max(10);
+                    #[cfg(feature = "perturbation")]
+                    { self.mandelbrot.perturbation_dirty = true; }
                     self.update_title();
                     if let Some(window) = &self.window {
                         window.request_redraw();
@@ -218,6 +230,15 @@ impl ApplicationHandler for App<'_> {
                 if let Some(window) = &self.window {
                     let size = window.inner_size();
                     let (cx, cy) = self.cursor_position;
+
+                    // Update HP position before modifying zoom
+                    #[cfg(feature = "perturbation")]
+                    self.mandelbrot.zoom_hp(
+                        cx / size.width as f64,
+                        cy / size.height as f64,
+                        zoom_factor as f64,
+                    );
+
                     let rect = rect_from_position(&self.mandelbrot.position, &self.mandelbrot.zoom);
                     let width_range = Range::new(0.0, size.width as f32);
                     let height_range = Range::new(0.0, size.height as f32);
@@ -249,22 +270,69 @@ impl ApplicationHandler for App<'_> {
                 }
                 self.last_frame = Some(now);
 
+                // Update perturbation state before rendering
+                #[cfg(feature = "perturbation")]
+                {
+                    let was_dirty = self.mandelbrot.perturbation_dirty;
+                    let was_active = self.mandelbrot.perturbation_active;
+                    self.mandelbrot.update_perturbation_state();
+                    // Only re-upload the orbit buffer when something actually changed
+                    if self.mandelbrot.perturbation_active && (!was_active || was_dirty) {
+                        if let Some(orbit) = self.mandelbrot.reference_orbit.clone() {
+                            if let (Some(pixels), Some(renderer)) =
+                                (&self.pixels, &mut self.renderer)
+                            {
+                                renderer.update_perturbation(pixels.device(), &orbit);
+                            }
+                        }
+                    }
+                }
+
+                #[cfg(feature = "perturbation")]
+                let use_perturbation = self.mandelbrot.perturbation_active;
+                #[cfg(not(feature = "perturbation"))]
+                let use_perturbation = false;
+
                 if let Some(pixels) = &mut self.pixels {
                     if self.gpu_rendering {
                         if let (Some(renderer), Some(window)) = (&self.renderer, &self.window) {
                             let size = window.inner_size();
-                            pixels
-                                .render_with(|encoder, render_target, context| {
-                                    renderer.set_params(
-                                        &context.queue,
-                                        &self.mandelbrot,
-                                        size.width as f32,
-                                        size.height as f32,
-                                    );
-                                    renderer.render(encoder, render_target, (0, 0, size.width, size.height));
-                                    Ok(())
-                                })
-                                .unwrap();
+                            if use_perturbation {
+                                #[cfg(feature = "perturbation")]
+                                pixels
+                                    .render_with(|encoder, render_target, context| {
+                                        renderer.set_perturbation_params(
+                                            &context.queue,
+                                            &self.mandelbrot,
+                                            size.width as f32,
+                                            size.height as f32,
+                                        );
+                                        renderer.render_perturbation(
+                                            encoder,
+                                            render_target,
+                                            (0, 0, size.width, size.height),
+                                        );
+                                        Ok(())
+                                    })
+                                    .unwrap();
+                            } else {
+                                pixels
+                                    .render_with(|encoder, render_target, context| {
+                                        renderer.set_params(
+                                            &context.queue,
+                                            &self.mandelbrot,
+                                            size.width as f32,
+                                            size.height as f32,
+                                        );
+                                        renderer.render(
+                                            encoder,
+                                            render_target,
+                                            (0, 0, size.width, size.height),
+                                        );
+                                        Ok(())
+                                    })
+                                    .unwrap();
+                            }
                         }
                     } else {
                         self.mandelbrot.render(pixels.frame_mut());

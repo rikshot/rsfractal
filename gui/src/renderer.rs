@@ -1,8 +1,10 @@
 use pixels::wgpu::{self, util::DeviceExt};
 use rsfractal_mandelbrot::mandelbrot::Mandelbrot;
 use rsfractal_mandelbrot::range::Range;
+#[cfg(feature = "perturbation")]
+use rsfractal_mandelbrot::perturbation::ReferenceOrbit;
 
-const COLORING_SIZE: u32 = 256;
+const COLORING_SIZE: u32 = 4096;
 
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 #[repr(C)]
@@ -14,6 +16,20 @@ struct Params {
     max_iterations: u32,
     exponent: f32,
     _padding: [u8; 12],
+}
+
+#[cfg(feature = "perturbation")]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+#[repr(C)]
+struct PerturbationParams {
+    viewport: [f32; 2],
+    zoom: [f32; 2],
+    reference_offset: [f32; 2],
+    center: [f32; 2],
+    bailout: f32,
+    max_iterations: u32,
+    orbit_length: u32,
+    exponent: f32,
 }
 
 fn bake_coloring_data(mandelbrot: &Mandelbrot) -> Vec<u8> {
@@ -74,6 +90,16 @@ pub(crate) struct MandelbrotRenderer {
     render_pipeline: wgpu::RenderPipeline,
     bind_group_layout: wgpu::BindGroupLayout,
     bind_group: wgpu::BindGroup,
+    #[cfg(feature = "perturbation")]
+    perturbation_pipeline: wgpu::RenderPipeline,
+    #[cfg(feature = "perturbation")]
+    perturbation_bind_group_layout: wgpu::BindGroupLayout,
+    #[cfg(feature = "perturbation")]
+    perturbation_params_buffer: wgpu::Buffer,
+    #[cfg(feature = "perturbation")]
+    perturbation_bind_group: Option<wgpu::BindGroup>,
+    #[cfg(feature = "perturbation")]
+    reference_orbit_buffer: Option<wgpu::Buffer>,
 }
 
 impl MandelbrotRenderer {
@@ -183,6 +209,99 @@ impl MandelbrotRenderer {
             multiview: None,
         });
 
+        // Perturbation pipeline setup
+        #[cfg(feature = "perturbation")]
+        let perturbation_params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: None,
+            contents: &[0u8; std::mem::size_of::<PerturbationParams>()],
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
+        #[cfg(feature = "perturbation")]
+        let perturbation_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: None,
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: wgpu::BufferSize::new(
+                                std::mem::size_of::<PerturbationParams>() as u64,
+                            ),
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 3,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: true },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                ],
+            });
+
+        #[cfg(feature = "perturbation")]
+        let perturbation_pipeline = {
+            let perturbation_shader = wgpu::include_wgsl!("perturbation.wgsl");
+            let perturbation_module = device.create_shader_module(perturbation_shader);
+
+            let perturbation_pipeline_layout =
+                device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                    label: None,
+                    bind_group_layouts: &[&perturbation_bind_group_layout],
+                    push_constant_ranges: &[],
+                });
+
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: None,
+                layout: Some(&perturbation_pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &perturbation_module,
+                    entry_point: "vs_main",
+                    buffers: &[],
+                },
+                primitive: wgpu::PrimitiveState::default(),
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState::default(),
+                fragment: Some(wgpu::FragmentState {
+                    module: &perturbation_module,
+                    entry_point: "fs_main",
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: pixels.render_texture_format(),
+                        blend: Some(wgpu::BlendState {
+                            color: wgpu::BlendComponent::REPLACE,
+                            alpha: wgpu::BlendComponent::REPLACE,
+                        }),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                }),
+                multiview: None,
+            })
+        };
+
         Self {
             params_buffer,
             coloring_texture,
@@ -191,6 +310,16 @@ impl MandelbrotRenderer {
             render_pipeline,
             bind_group_layout,
             bind_group,
+            #[cfg(feature = "perturbation")]
+            perturbation_pipeline,
+            #[cfg(feature = "perturbation")]
+            perturbation_bind_group_layout,
+            #[cfg(feature = "perturbation")]
+            perturbation_params_buffer,
+            #[cfg(feature = "perturbation")]
+            perturbation_bind_group: None,
+            #[cfg(feature = "perturbation")]
+            reference_orbit_buffer: None,
         }
     }
 
@@ -216,6 +345,33 @@ impl MandelbrotRenderer {
                 },
             ],
         });
+
+        // Rebuild perturbation bind group with new texture if orbit buffer exists
+        #[cfg(feature = "perturbation")]
+        if let Some(orbit_buffer) = &self.reference_orbit_buffer {
+            self.perturbation_bind_group = Some(device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: None,
+                layout: &self.perturbation_bind_group_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: self.perturbation_params_buffer.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::TextureView(&self.coloring_texture_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: wgpu::BindingResource::Sampler(&self.sampler),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: orbit_buffer.as_entire_binding(),
+                    },
+                ],
+            }));
+        }
     }
 
     pub(crate) fn set_params(&self, queue: &wgpu::Queue, mandelbrot: &Mandelbrot, viewport_width: f32, viewport_height: f32) {
@@ -253,5 +409,104 @@ impl MandelbrotRenderer {
         rpass.set_bind_group(0, &self.bind_group, &[]);
         rpass.set_scissor_rect(clip_rect.0, clip_rect.1, clip_rect.2, clip_rect.3);
         rpass.draw(0..3, 0..1);
+    }
+
+    #[cfg(feature = "perturbation")]
+    pub(crate) fn update_perturbation(
+        &mut self,
+        device: &wgpu::Device,
+        orbit: &ReferenceOrbit,
+    ) {
+        let orbit_data: &[u8] = bytemuck::cast_slice(&orbit.values_f32);
+        let orbit_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: None,
+            contents: orbit_data,
+            usage: wgpu::BufferUsages::STORAGE,
+        });
+
+        self.perturbation_bind_group = Some(device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: None,
+            layout: &self.perturbation_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: self.perturbation_params_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&self.coloring_texture_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Sampler(&self.sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: orbit_buffer.as_entire_binding(),
+                },
+            ],
+        }));
+
+        self.reference_orbit_buffer = Some(orbit_buffer);
+    }
+
+    #[cfg(feature = "perturbation")]
+    pub(crate) fn set_perturbation_params(
+        &self,
+        queue: &wgpu::Queue,
+        mandelbrot: &Mandelbrot,
+        viewport_width: f32,
+        viewport_height: f32,
+    ) {
+        let orbit_length = mandelbrot
+            .reference_orbit
+            .as_ref()
+            .map(|o| o.escape_iteration.min(mandelbrot.max_iterations))
+            .unwrap_or(0) as u32;
+
+        let params = PerturbationParams {
+            viewport: [viewport_width, viewport_height],
+            zoom: [mandelbrot.zoom.x, mandelbrot.zoom.y],
+            reference_offset: [
+                mandelbrot.reference_offset.0 as f32,
+                mandelbrot.reference_offset.1 as f32,
+            ],
+            center: [mandelbrot.position.x, mandelbrot.position.y],
+            bailout: mandelbrot.bailout,
+            max_iterations: mandelbrot.max_iterations as u32,
+            orbit_length,
+            exponent: mandelbrot.exponent,
+        };
+        queue.write_buffer(
+            &self.perturbation_params_buffer,
+            0,
+            bytemuck::bytes_of(&params),
+        );
+    }
+
+    #[cfg(feature = "perturbation")]
+    pub(crate) fn render_perturbation(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        render_target: &wgpu::TextureView,
+        clip_rect: (u32, u32, u32, u32),
+    ) {
+        if let Some(bind_group) = &self.perturbation_bind_group {
+            let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: render_target,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                ..Default::default()
+            });
+            rpass.set_pipeline(&self.perturbation_pipeline);
+            rpass.set_bind_group(0, bind_group, &[]);
+            rpass.set_scissor_rect(clip_rect.0, clip_rect.1, clip_rect.2, clip_rect.3);
+            rpass.draw(0..3, 0..1);
+        }
     }
 }

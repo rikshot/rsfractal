@@ -59,9 +59,12 @@ fn fs_main(@builtin(position) input: vec4f) -> @location(0) vec4f {
     if q * (q + (c.re - 0.25)) < 0.25 * im2 || p2 * p2 + im2 < 0.0625 {
         iterations = params.max_iterations;
     } else {
-        while re2 + im2 <= params.bailout && iterations < params.max_iterations {
+        while iterations < params.max_iterations {
             re2 = z.re * z.re;
             im2 = z.im * z.im;
+            if re2 + im2 > params.bailout {
+                break;
+            }
             temp = re2 - im2 + c.re;
             z.im = 2.0 * z.re * z.im + c.im;
             z.re = temp;
@@ -69,14 +72,14 @@ fn fs_main(@builtin(position) input: vec4f) -> @location(0) vec4f {
         }
     }
 
-    if iterations == params.max_iterations {
+    if re2 + im2 <= params.bailout {
         return vec4f(0.0, 0.0, 0.0, 1.0);
     }
 
     let ln2 = log(2.0);
     let zn = log(re2 + im2) / 2.0;
     let nu = log(zn / ln2) / ln2;
-    temp = f32(iterations) + 1.0 - nu;
+    temp = max(f32(iterations) + 1.0 - nu, 0.0);
 
     let s = pow(temp / f32(params.max_iterations), params.exponent);
 

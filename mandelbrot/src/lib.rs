@@ -2,6 +2,8 @@
 
 pub mod boundary_scanner;
 pub mod mandelbrot;
+#[cfg(feature = "perturbation")]
+pub mod perturbation;
 pub mod range;
 pub mod rectangle;
 pub mod vector;

@@ -1,4 +1,6 @@
 use std::fmt::Debug;
+#[cfg(feature = "perturbation")]
+use std::sync::Arc;
 
 use colorgrad::{CatmullRomGradient, Color, Gradient, GradientBuilder};
 use num::complex::Complex32;
@@ -6,6 +8,11 @@ use rayon::prelude::*;
 use strum::{Display, EnumIter, EnumString};
 
 use crate::boundary_scanner::BoundaryScanner;
+#[cfg(feature = "perturbation")]
+use crate::perturbation::{
+    compute_reference_orbit, iterate_perturbation, needs_perturbation, required_precision_bits,
+    test_orbit_f64, HighPrecisionComplex, HighPrecisionPosition, ReferenceOrbit,
+};
 
 use super::range::Range;
 use super::rectangle::Rectangle;
@@ -26,6 +33,18 @@ pub struct Mandelbrot {
     pub exponent: f32,
     pub(crate) palettes: Vec<(String, CatmullRomGradient)>,
     pub selected_palette: usize,
+    #[cfg(feature = "perturbation")]
+    pub high_precision_position: Option<HighPrecisionPosition>,
+    #[cfg(feature = "perturbation")]
+    pub reference_orbit: Option<Arc<ReferenceOrbit>>,
+    #[cfg(feature = "perturbation")]
+    pub perturbation_active: bool,
+    #[cfg(feature = "perturbation")]
+    pub reference_offset: (f64, f64),
+    #[cfg(feature = "perturbation")]
+    pub reference_point: Option<HighPrecisionComplex>,
+    #[cfg(feature = "perturbation")]
+    pub perturbation_dirty: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Display, EnumString, EnumIter)]
@@ -69,6 +88,14 @@ impl Mandelbrot {
     }
 
     pub fn render(&self, pixels: &mut [u8]) {
+        #[cfg(feature = "perturbation")]
+        if self.perturbation_active {
+            if let Some(orbit) = &self.reference_orbit {
+                self.render_smooth_perturbation(pixels, orbit);
+                return;
+            }
+        }
+
         match self.rendering {
             Rendering::Smooth => self.render_smooth(pixels),
             Rendering::Fast => self.render_fast(pixels),
@@ -86,6 +113,21 @@ impl Mandelbrot {
             .collect()
     }
 
+    fn sample_lut(lut: &[[u8; 4]], s: f32) -> [u8; 4] {
+        let max_index = (lut.len() - 1) as f32;
+        let pos = (s * max_index).clamp(0.0, max_index);
+        let idx0 = (pos as usize).min(lut.len() - 2);
+        let t = pos - idx0 as f32;
+        let c0 = lut[idx0];
+        let c1 = lut[idx0 + 1];
+        [
+            (c0[0] as f32 + t * (c1[0] as f32 - c0[0] as f32)) as u8,
+            (c0[1] as f32 + t * (c1[1] as f32 - c0[1] as f32)) as u8,
+            (c0[2] as f32 + t * (c1[2] as f32 - c0[2] as f32)) as u8,
+            0xFF,
+        ]
+    }
+
     fn build_fast_lut(&self) -> Vec<[u8; 4]> {
         (0..self.max_iterations)
             .map(|i| self.color(None, i).to_rgba8())
@@ -95,7 +137,6 @@ impl Mandelbrot {
     fn render_smooth(&self, pixels: &mut [u8]) {
         let [width_range, height_range, real_range, imaginary_range] = self.ranges();
         let lut = self.build_smooth_lut();
-        let max_index = (Self::SMOOTH_LUT_SIZE - 1) as f32;
 
         pixels
             .par_chunks_exact_mut(4)
@@ -113,8 +154,7 @@ impl Mandelbrot {
                 let (z, iterations) = self.iterate(&c);
                 if iterations < self.max_iterations {
                     let s = self.exponential(self.smooth(&z, iterations));
-                    let idx = (s * max_index) as usize;
-                    pixel.copy_from_slice(&lut[idx.min(Self::SMOOTH_LUT_SIZE - 1)]);
+                    pixel.copy_from_slice(&Self::sample_lut(&lut, s));
                 } else {
                     pixel.copy_from_slice(&[0, 0, 0, 0xFF]);
                 }
@@ -260,6 +300,29 @@ impl Mandelbrot {
     }
 
     pub fn zoom(&mut self, x: f32, y: f32, zoom_factor: f32) {
+        #[cfg(feature = "perturbation")]
+        if let Some(hp) = &mut self.high_precision_position {
+            // Compute cursor offset from center in complex plane using f64
+            let cursor_frac_x = x as f64 / self.width as f64;
+            let cursor_frac_y = y as f64 / self.height as f64;
+            let offset_re = (cursor_frac_x * 2.0 - 1.0) * self.zoom.x as f64;
+            let offset_im = (cursor_frac_y * 2.0 - 1.0) * self.zoom.y as f64;
+
+            let precision = hp.x.precision();
+            let offset_re_hp = dashu::float::FBig::try_from(offset_re)
+                .unwrap()
+                .with_precision(precision)
+                .value();
+            let offset_im_hp = dashu::float::FBig::try_from(offset_im)
+                .unwrap()
+                .with_precision(precision)
+                .value();
+
+            // Move center to cursor position
+            hp.x += offset_re_hp;
+            hp.y += offset_im_hp;
+        }
+
         let width_range = Range::new(0.0, self.width as f32);
         let height_range = Range::new(0.0, self.height as f32);
         let selection = rect_from_position(&self.position, &self.zoom);
@@ -273,6 +336,35 @@ impl Mandelbrot {
             x: self.zoom.x * zoom_factor,
             y: self.zoom.y * zoom_factor,
         };
+    }
+
+    pub fn pan(&mut self, screen_dx: f64, screen_dy: f64) {
+        // Use 2*zoom directly instead of rect.width() to avoid f32 cancellation
+        // at deep zoom (position+zoom == position-zoom in f32 → width=0)
+        let width = 2.0 * self.zoom.x;
+        let height = 2.0 * self.zoom.y;
+        let dx = screen_dx as f32 * width / 1000.0;
+        let dy = screen_dy as f32 * height / 1000.0;
+        self.position.x -= dx;
+        self.position.y -= dy;
+
+        #[cfg(feature = "perturbation")]
+        if let Some(hp) = &mut self.high_precision_position {
+            let precision = hp.x.precision();
+            let dx_hp =
+                dashu::float::FBig::try_from(screen_dx * width as f64 / 1000.0)
+                    .unwrap()
+                    .with_precision(precision)
+                    .value();
+            let dy_hp =
+                dashu::float::FBig::try_from(screen_dy * height as f64 / 1000.0)
+                    .unwrap()
+                    .with_precision(precision)
+                    .value();
+            hp.x -= dx_hp;
+            hp.y -= dy_hp;
+            self.perturbation_dirty = true;
+        }
     }
 
     fn smooth(&self, z: &Complex32, iterations: usize) -> f32 {
@@ -295,12 +387,12 @@ impl Mandelbrot {
                 palette.at(f32::powf(s, 1.0 / 3.0))
             }
             Coloring::LCH => {
-                let s = f32::powf(s, 1.5);
+                let s = f32::powf(s, 1.0 / 3.0);
                 let v = 1.0 - f32::powf(f32::cos(std::f32::consts::PI * s), 2.0);
                 Color::from_lcha(
                     75.0 - (75.0 * v),
                     28.0 + (75.0 - (75.0 * v)),
-                    f32::powf(360.0 * s, 1.5) % 360.0,
+                    360.0 * s % 360.0,
                     1.0,
                 )
             }
@@ -314,6 +406,238 @@ impl Mandelbrot {
             iterations as f32
         };
         self.color_at(self.exponential(smooth))
+    }
+}
+
+#[cfg(feature = "perturbation")]
+impl Mandelbrot {
+    /// Update HP position for zoom toward cursor. Call before modifying zoom.
+    /// `cursor_frac_x/y` are cursor position as fraction of window size (0..1).
+    pub fn zoom_hp(&mut self, cursor_frac_x: f64, cursor_frac_y: f64, zoom_factor: f64) {
+        if let Some(hp) = &mut self.high_precision_position {
+            let offset_re =
+                self.zoom.x as f64 * (2.0 * cursor_frac_x - 1.0) * (1.0 - zoom_factor);
+            let offset_im =
+                self.zoom.y as f64 * (2.0 * cursor_frac_y - 1.0) * (1.0 - zoom_factor);
+            let precision = hp.x.precision();
+            hp.x += dashu::float::FBig::try_from(offset_re)
+                .unwrap()
+                .with_precision(precision)
+                .value();
+            hp.y += dashu::float::FBig::try_from(offset_im)
+                .unwrap()
+                .with_precision(precision)
+                .value();
+        }
+        self.perturbation_dirty = true;
+    }
+
+    pub fn update_perturbation_state(&mut self) {
+        if needs_perturbation(self.zoom.x, self.width) {
+            // Skip recomputation if nothing changed
+            if self.perturbation_active && !self.perturbation_dirty {
+                return;
+            }
+
+            // Promote f32 position to HP on first activation
+            if self.high_precision_position.is_none() {
+                let precision = required_precision_bits(self.zoom.x);
+                self.high_precision_position = Some(HighPrecisionPosition::from_f32(
+                    self.position.x,
+                    self.position.y,
+                    precision,
+                ));
+            }
+
+            // Increase precision if needed
+            if let Some(hp) = &mut self.high_precision_position {
+                let needed = required_precision_bits(self.zoom.x);
+                if hp.x.precision() < needed {
+                    hp.x = hp.x.clone().with_precision(needed).value();
+                    hp.y = hp.y.clone().with_precision(needed).value();
+                }
+            }
+
+            let hp = self.high_precision_position.as_ref().unwrap();
+            let center_re: f64 = hp.x.to_f64().value();
+            let center_im: f64 = hp.y.to_f64().value();
+            let precision = hp.x.precision();
+
+            // Try to reuse existing reference point — just update the offset
+            let need_new_ref = if let Some(ref rp) = self.reference_point {
+                let rp_re: f64 = rp.re.to_f64().value();
+                let rp_im: f64 = rp.im.to_f64().value();
+                let off_re = rp_re - center_re;
+                let off_im = rp_im - center_im;
+
+                // Check if reference point is still within the viewport
+                let in_viewport = off_re.abs() < 2.0 * self.zoom.x as f64
+                    && off_im.abs() < 2.0 * self.zoom.y as f64;
+
+                // Check if orbit is long enough for current max_iterations
+                let orbit_ok = self
+                    .reference_orbit
+                    .as_ref()
+                    .is_some_and(|o| o.escape_iteration >= self.max_iterations);
+
+                if in_viewport && orbit_ok {
+                    // Reuse — just update offset (no orbit recomputation!)
+                    self.reference_offset = (off_re, off_im);
+                    false
+                } else {
+                    true
+                }
+            } else {
+                true
+            };
+
+            if need_new_ref {
+                self.find_and_compute_reference(center_re, center_im, precision);
+            }
+
+            self.perturbation_active = true;
+            self.perturbation_dirty = false;
+        } else {
+            self.perturbation_active = false;
+            // Keep HP position to avoid precision loss if we zoom back in
+        }
+    }
+
+    fn find_and_compute_reference(
+        &mut self,
+        center_re: f64,
+        center_im: f64,
+        precision: usize,
+    ) {
+        // Test the center first
+        let center_length = test_orbit_f64(
+            center_re,
+            center_im,
+            self.max_iterations,
+            self.bailout as f64,
+        );
+
+        if center_length >= self.max_iterations {
+            // Center is interior, use directly
+            let hp = self.high_precision_position.as_ref().unwrap();
+            let ref_center = HighPrecisionComplex::new(hp.x.clone(), hp.y.clone());
+            let orbit =
+                compute_reference_orbit(&ref_center, self.max_iterations, self.bailout);
+            self.reference_orbit = Some(Arc::new(orbit));
+            self.reference_offset = (0.0, 0.0);
+            self.reference_point = Some(ref_center);
+            return;
+        }
+
+        // Search nearby for a longer-lived reference
+        let mut best_offset = (0.0_f64, 0.0_f64);
+        let mut best_length = center_length;
+
+        let steps = [-0.4, -0.2, -0.1, 0.0, 0.1, 0.2, 0.4];
+        'search: for &fx in &steps {
+            for &fy in &steps {
+                if fx == 0.0 && fy == 0.0 {
+                    continue;
+                }
+                let off_re = fx * 2.0 * self.zoom.x as f64;
+                let off_im = fy * 2.0 * self.zoom.y as f64;
+                let length = test_orbit_f64(
+                    center_re + off_re,
+                    center_im + off_im,
+                    self.max_iterations,
+                    self.bailout as f64,
+                );
+                if length > best_length {
+                    best_length = length;
+                    best_offset = (off_re, off_im);
+                    if length >= self.max_iterations {
+                        break 'search;
+                    }
+                }
+            }
+        }
+
+        // Build reference point at the best location
+        let off_re_hp = dashu::float::FBig::try_from(best_offset.0)
+            .unwrap()
+            .with_precision(precision)
+            .value();
+        let off_im_hp = dashu::float::FBig::try_from(best_offset.1)
+            .unwrap()
+            .with_precision(precision)
+            .value();
+        let hp = self.high_precision_position.as_ref().unwrap();
+        let ref_center = HighPrecisionComplex::new(
+            hp.x.clone() + off_re_hp,
+            hp.y.clone() + off_im_hp,
+        );
+        let orbit = compute_reference_orbit(
+            &ref_center,
+            self.max_iterations,
+            self.bailout,
+        );
+        self.reference_orbit = Some(Arc::new(orbit));
+        self.reference_offset = (best_offset.0, best_offset.1);
+        self.reference_point = Some(ref_center);
+    }
+
+    fn render_smooth_perturbation(&self, pixels: &mut [u8], orbit: &ReferenceOrbit) {
+        let lut = self.build_smooth_lut();
+        let bailout = self.bailout as f64;
+
+        // Reference center = viewport center + reference_offset
+        let ref_center_re = if let Some(hp) = &self.high_precision_position {
+            hp.x.to_f64().value() + self.reference_offset.0
+        } else {
+            self.position.x as f64
+        };
+        let ref_center_im = if let Some(hp) = &self.high_precision_position {
+            hp.y.to_f64().value() + self.reference_offset.1
+        } else {
+            self.position.y as f64
+        };
+
+        let zoom_x = self.zoom.x as f64;
+        let zoom_y = self.zoom.y as f64;
+        let ref_off_re = self.reference_offset.0;
+        let ref_off_im = self.reference_offset.1;
+        let width = self.width;
+        let height = self.height;
+        let max_iterations = self.max_iterations;
+        let exponent = self.exponent;
+
+        pixels
+            .par_chunks_exact_mut(4)
+            .enumerate()
+            .by_uniform_blocks(self.chunk_size)
+            .for_each(|(index, pixel)| {
+                let px = (index % width) as f64;
+                let py = (index / width) as f64;
+
+                // Compute delta from reference point (not viewport center)
+                let dc_re = (px / width as f64 * 2.0 - 1.0) * zoom_x - ref_off_re;
+                let dc_im = (py / height as f64 * 2.0 - 1.0) * zoom_y - ref_off_im;
+
+                let (norm_sq, iterations) = iterate_perturbation(
+                    orbit,
+                    ref_center_re,
+                    ref_center_im,
+                    dc_re,
+                    dc_im,
+                    max_iterations,
+                    bailout,
+                );
+
+                if iterations < max_iterations {
+                    let zn = (norm_sq.ln() / 2.0) as f32;
+                    let nu = f32::ln(zn / std::f32::consts::LN_2) / std::f32::consts::LN_2;
+                    let smooth = (iterations + 1) as f32 - nu;
+                    let s = f32::powf(smooth / max_iterations as f32, exponent);
+                    pixel.copy_from_slice(&Self::sample_lut(&lut, s));
+                } else {
+                    pixel.copy_from_slice(&[0, 0, 0, 0xFF]);
+                }
+            });
     }
 }
 
@@ -352,6 +676,18 @@ impl Default for Mandelbrot {
             exponent: 1.0,
             palettes,
             selected_palette: 0,
+            #[cfg(feature = "perturbation")]
+            high_precision_position: None,
+            #[cfg(feature = "perturbation")]
+            reference_orbit: None,
+            #[cfg(feature = "perturbation")]
+            perturbation_active: false,
+            #[cfg(feature = "perturbation")]
+            reference_offset: (0.0, 0.0),
+            #[cfg(feature = "perturbation")]
+            reference_point: None,
+            #[cfg(feature = "perturbation")]
+            perturbation_dirty: true,
         }
     }
 }
