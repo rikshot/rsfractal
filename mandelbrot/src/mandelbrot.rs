@@ -138,9 +138,9 @@ impl Mandelbrot {
     #[cfg(all(not(target_arch = "aarch64"), not(target_family = "wasm")))]
     pub(crate) fn iterate_inner(&self, c: &Complex32) -> (Complex32, usize) {
         use num::traits::MulAddAssign;
-        let mut z: Complex32 = Complex64::ZERO;
+        let mut z: Complex32 = Complex32::ZERO;
         let mut iterations = 0;
-        let mut old: Complex32 = Complex64::ZERO;
+        let mut old: Complex32 = Complex32::ZERO;
         let mut period = 0;
         while z.norm_sqr() < self.bailout && iterations < self.max_iterations {
             z.mul_add_assign(z, *c);
@@ -160,22 +160,28 @@ impl Mandelbrot {
     #[cfg(all(target_family = "wasm", target_feature = "simd128"))]
     pub(crate) unsafe fn iterate_inner(&self, c: &Complex32) -> (Complex32, usize) {
         use core::arch::wasm32::*;
-        use core::mem::transmute;
-        unsafe {
-            let c: v128 = transmute(*c);
-            let mut z = f32x2_splat(0.0);
+        {
+            // Pack complex into lower 2 lanes of v128: [re, im, 0, 0]
+            let c = f32x4(c.re, c.im, 0.0, 0.0);
+            let mut z = f32x4_splat(0.0);
             let mut iterations = 0;
-            let mut old = f32x2_splat(0.0);
+            let mut old = f32x4_splat(0.0);
             let mut period = 0;
             loop {
-                let acbd = f32x2_mul(z, z);
-                let adbc = f32x2_mul(z, f32x2(f32x2_extract_lane::<1>(z), f32x2_extract_lane::<0>(z)));
-                let acad = f32x2(f32x2_extract_lane::<0>(acbd), f32x2_extract_lane::<0>(adbc));
-                let bdbc = f32x2(f32x2_extract_lane::<1>(acbd), f32x2_extract_lane::<1>(adbc));
-                z = f32x2_add(f32x2_add(f32x2_mul(bdbc, f32x2(-1.0, 1.0)), acad), c);
+                // z*z: (re*re - im*im, 2*re*im)
+                let re = f32x4_extract_lane::<0>(z);
+                let im = f32x4_extract_lane::<1>(z);
+                let re2 = re * re;
+                let im2 = im * im;
+                z = f32x4(re2 - im2 + f32x4_extract_lane::<0>(c),
+                          2.0 * re * im + f32x4_extract_lane::<1>(c),
+                          0.0, 0.0);
 
-                if u128::MAX == transmute::<v128, u128>(f32x2_eq(z, old)) {
-                    break (transmute::<v128, Complex32>(z), self.max_iterations);
+                if f32x4_extract_lane::<0>(z) == f32x4_extract_lane::<0>(old)
+                    && f32x4_extract_lane::<1>(z) == f32x4_extract_lane::<1>(old)
+                {
+                    let result = Complex32::new(f32x4_extract_lane::<0>(z), f32x4_extract_lane::<1>(z));
+                    break (result, self.max_iterations);
                 }
 
                 iterations += 1;
@@ -185,10 +191,9 @@ impl Mandelbrot {
                     old = z;
                 }
 
-                if f32x2_extract_lane::<0>(acbd) + f32x2_extract_lane::<1>(acbd) >= self.bailout
-                    || iterations >= self.max_iterations
-                {
-                    break (transmute::<v128, Complex64>(z), iterations);
+                if re2 + im2 >= self.bailout || iterations >= self.max_iterations {
+                    let result = Complex32::new(f32x4_extract_lane::<0>(z), f32x4_extract_lane::<1>(z));
+                    break (result, iterations);
                 }
             }
         }

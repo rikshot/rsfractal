@@ -124,30 +124,45 @@ fn App() -> impl IntoView {
                     attr:id="resolution"
                     on:change=move |ev| {
                         let value = event_target_value(&ev);
-                        let parts: Vec<usize> = value.split('x').filter_map(|s| s.parse().ok()).collect();
+                        let parts: Vec<usize> = value
+                            .split('x')
+                            .filter_map(|s| s.parse().ok())
+                            .collect();
                         if parts.len() == 2 {
-                            set_mandelbrot.update(|mandelbrot| mandelbrot.set_resolution(parts[0], parts[1]));
+                            set_mandelbrot
+                                .update(|mandelbrot| mandelbrot.set_resolution(parts[0], parts[1]));
                             render();
                         }
                     }
                     prop:disabled=move || action.pending().get()
-                    prop:value=move || { format!("{}x{}", mandelbrot.read().width, mandelbrot.read().height) }
+                    prop:value=move || {
+                        format!("{}x{}", mandelbrot.read().width, mandelbrot.read().height)
+                    }
                 >
                     {
                         const RESOLUTIONS: &[(usize, usize)] = &[
-                            (320, 180), (640, 360), (960, 540), (1280, 720),
-                            (1600, 900), (1920, 1080), (3840, 2160),
+                            (320, 180),
+                            (640, 360),
+                            (960, 540),
+                            (1280, 720),
+                            (1600, 900),
+                            (1920, 1080),
+                            (3840, 2160),
                         ];
                         RESOLUTIONS
                             .iter()
                             .map(|(w, h)| {
                                 let value = format!("{w}x{h}");
+                                let label = value.clone();
                                 view! {
                                     <option
-                                        value=value.clone()
-                                        selected=move || mandelbrot.read().width == *w && mandelbrot.read().height == *h
+                                        value=value
+                                        selected=move || {
+                                            mandelbrot.read().width == *w
+                                                && mandelbrot.read().height == *h
+                                        }
                                     >
-                                        {value}
+                                        {label}
                                     </option>
                                 }
                             })
@@ -266,7 +281,7 @@ fn App() -> impl IntoView {
                         prop:value=move || { mandelbrot.read().selected_palette.to_string() }
                     >
                         {mandelbrot
-                            .read()
+                            .read_untracked()
                             .palettes()
                             .iter()
                             .enumerate()

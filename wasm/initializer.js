@@ -18,7 +18,7 @@ export default function initializer() {
     onSuccess: async (wasm) => {
       console.log("Loading... successful!");
       console.log("WebAssembly: ", wasm);
-      wasm.initThreadPool(navigator.hardwareConcurrency);
+      await wasm.initThreadPool(navigator.hardwareConcurrency);
     },
     onFailure: (error) => {
       console.warn("Loading... failed!", error);

@@ -89,15 +89,14 @@ impl ApplicationHandler for App<'_> {
         _device_id: winit::event::DeviceId,
         event: winit::event::DeviceEvent,
     ) {
-        if let Some(window) = &self.window {
-            if let DeviceEvent::MouseMotion { delta } = event {
-                if self.mouse_button {
-                    let rect = rect_from_position(&self.mandelbrot.position, &self.mandelbrot.zoom);
-                    self.mandelbrot.position.x -= delta.0 as f32 * rect.width() / 1000.0;
-                    self.mandelbrot.position.y -= delta.1 as f32 * rect.height() / 1000.0;
-                    window.request_redraw();
-                }
-            }
+        if let Some(window) = &self.window
+            && let DeviceEvent::MouseMotion { delta } = event
+            && self.mouse_button
+        {
+            let rect = rect_from_position(&self.mandelbrot.position, &self.mandelbrot.zoom);
+            self.mandelbrot.position.x -= delta.0 as f32 * rect.width() / 1000.0;
+            self.mandelbrot.position.y -= delta.1 as f32 * rect.height() / 1000.0;
+            window.request_redraw();
         }
     }
 
@@ -119,7 +118,8 @@ impl ApplicationHandler for App<'_> {
                         event_loop.exit();
                     } else {
                         if !self.gpu_rendering {
-                            self.mandelbrot.set_resolution(size.width as usize, size.height as usize);
+                            self.mandelbrot
+                                .set_resolution(size.width as usize, size.height as usize);
                             let _ = pixels.resize_buffer(size.width, size.height);
                         }
                         window.request_redraw();
@@ -127,103 +127,109 @@ impl ApplicationHandler for App<'_> {
                 }
             }
             WindowEvent::KeyboardInput {
-                event: KeyEvent { physical_key: PhysicalKey::Code(key), state: ElementState::Pressed, .. },
+                event:
+                    KeyEvent {
+                        physical_key: PhysicalKey::Code(key),
+                        state: ElementState::Pressed,
+                        ..
+                    },
                 ..
-            } => {
-                match key {
-                    KeyCode::Escape => event_loop.exit(),
-                    KeyCode::KeyC => {
-                        self.mandelbrot.coloring = match self.mandelbrot.coloring {
-                            Coloring::Palette => Coloring::LCH,
-                            Coloring::LCH => Coloring::Palette,
-                        };
-                        if let (Some(pixels), Some(renderer)) = (&self.pixels, &mut self.renderer) {
-                            renderer.update_coloring(pixels.device(), pixels.queue(), &self.mandelbrot);
-                        }
-                        self.update_title();
-                        if let Some(window) = &self.window {
-                            window.request_redraw();
-                        }
+            } => match key {
+                KeyCode::Escape => event_loop.exit(),
+                KeyCode::KeyC => {
+                    self.mandelbrot.coloring = match self.mandelbrot.coloring {
+                        Coloring::Palette => Coloring::LCH,
+                        Coloring::LCH => Coloring::Palette,
+                    };
+                    if let (Some(pixels), Some(renderer)) = (&self.pixels, &mut self.renderer) {
+                        renderer.update_coloring(pixels.device(), pixels.queue(), &self.mandelbrot);
                     }
-                    KeyCode::KeyM => {
-                        self.gpu_rendering = !self.gpu_rendering;
-                        if !self.gpu_rendering {
-                            if let (Some(window), Some(pixels)) = (&self.window, &mut self.pixels) {
-                                let size = window.inner_size();
-                                self.mandelbrot.set_resolution(size.width as usize, size.height as usize);
-                                let _ = pixels.resize_buffer(size.width, size.height);
-                            }
-                        }
-                        self.update_title();
-                        if let Some(window) = &self.window {
-                            window.request_redraw();
-                        }
+                    self.update_title();
+                    if let Some(window) = &self.window {
+                        window.request_redraw();
                     }
-                    KeyCode::KeyR => {
-                        self.mandelbrot.rendering = match self.mandelbrot.rendering {
-                            Rendering::Smooth => Rendering::Fast,
-                            Rendering::Fast => Rendering::Smooth,
-                        };
-                        self.update_title();
-                        if let Some(window) = &self.window {
-                            window.request_redraw();
-                        }
-                    }
-                    KeyCode::KeyP => {
-                        self.mandelbrot.selected_palette = (self.mandelbrot.selected_palette + 1) % self.mandelbrot.palettes().len();
-                        if let (Some(pixels), Some(renderer)) = (&self.pixels, &mut self.renderer) {
-                            renderer.update_coloring(pixels.device(), pixels.queue(), &self.mandelbrot);
-                        }
-                        self.update_title();
-                        if let Some(window) = &self.window {
-                            window.request_redraw();
-                        }
-                    }
-                    KeyCode::ArrowUp => {
-                        self.mandelbrot.max_iterations = (self.mandelbrot.max_iterations * 2).min(100000);
-                        self.update_title();
-                        if let Some(window) = &self.window {
-                            window.request_redraw();
-                        }
-                    }
-                    KeyCode::ArrowDown => {
-                        self.mandelbrot.max_iterations = (self.mandelbrot.max_iterations / 2).max(10);
-                        self.update_title();
-                        if let Some(window) = &self.window {
-                            window.request_redraw();
-                        }
-                    }
-                    _ => ()
                 }
-            }
+                KeyCode::KeyM => {
+                    self.gpu_rendering = !self.gpu_rendering;
+                    if !self.gpu_rendering
+                        && let (Some(window), Some(pixels)) = (&self.window, &mut self.pixels)
+                    {
+                        let size = window.inner_size();
+                        self.mandelbrot
+                            .set_resolution(size.width as usize, size.height as usize);
+                        let _ = pixels.resize_buffer(size.width, size.height);
+                    }
+                    self.update_title();
+                    if let Some(window) = &self.window {
+                        window.request_redraw();
+                    }
+                }
+                KeyCode::KeyR => {
+                    self.mandelbrot.rendering = match self.mandelbrot.rendering {
+                        Rendering::Smooth => Rendering::Fast,
+                        Rendering::Fast => Rendering::Smooth,
+                    };
+                    self.update_title();
+                    if let Some(window) = &self.window {
+                        window.request_redraw();
+                    }
+                }
+                KeyCode::KeyP => {
+                    self.mandelbrot.selected_palette =
+                        (self.mandelbrot.selected_palette + 1) % self.mandelbrot.palettes().len();
+                    if let (Some(pixels), Some(renderer)) = (&self.pixels, &mut self.renderer) {
+                        renderer.update_coloring(pixels.device(), pixels.queue(), &self.mandelbrot);
+                    }
+                    self.update_title();
+                    if let Some(window) = &self.window {
+                        window.request_redraw();
+                    }
+                }
+                KeyCode::ArrowUp => {
+                    self.mandelbrot.max_iterations = (self.mandelbrot.max_iterations * 2).min(100000);
+                    self.update_title();
+                    if let Some(window) = &self.window {
+                        window.request_redraw();
+                    }
+                }
+                KeyCode::ArrowDown => {
+                    self.mandelbrot.max_iterations = (self.mandelbrot.max_iterations / 2).max(10);
+                    self.update_title();
+                    if let Some(window) = &self.window {
+                        window.request_redraw();
+                    }
+                }
+                _ => (),
+            },
             WindowEvent::CursorMoved { position, .. } => {
                 self.cursor_position = (position.x, position.y);
             }
-            WindowEvent::MouseWheel { delta, .. } => {
-                if let MouseScrollDelta::PixelDelta(physical_position) = delta {
-                    let zoom_factor = if physical_position.y > 0.0 {
-                        0.9
-                    } else if physical_position.y < 0.0 {
-                        1.1
-                    } else {
-                        return;
-                    };
-                    if let Some(window) = &self.window {
-                        let size = window.inner_size();
-                        let (cx, cy) = self.cursor_position;
-                        let rect = rect_from_position(&self.mandelbrot.position, &self.mandelbrot.zoom);
-                        let width_range = Range::new(0.0, size.width as f32);
-                        let height_range = Range::new(0.0, size.height as f32);
-                        let real_range = Range::new(rect.start.x, rect.end.x);
-                        let imaginary_range = Range::new(rect.start.y, rect.end.y);
-                        let target_re = Range::scale(&width_range, cx as f32, &real_range);
-                        let target_im = Range::scale(&height_range, cy as f32, &imaginary_range);
-                        self.mandelbrot.zoom.x *= zoom_factor;
-                        self.mandelbrot.zoom.y *= zoom_factor;
-                        self.mandelbrot.position.x = target_re + (self.mandelbrot.position.x - target_re) * zoom_factor;
-                        self.mandelbrot.position.y = target_im + (self.mandelbrot.position.y - target_im) * zoom_factor;
-                        window.request_redraw();
-                    }
+            WindowEvent::MouseWheel {
+                delta: MouseScrollDelta::PixelDelta(physical_position),
+                ..
+            } => {
+                let zoom_factor = if physical_position.y > 0.0 {
+                    0.9
+                } else if physical_position.y < 0.0 {
+                    1.1
+                } else {
+                    return;
+                };
+                if let Some(window) = &self.window {
+                    let size = window.inner_size();
+                    let (cx, cy) = self.cursor_position;
+                    let rect = rect_from_position(&self.mandelbrot.position, &self.mandelbrot.zoom);
+                    let width_range = Range::new(0.0, size.width as f32);
+                    let height_range = Range::new(0.0, size.height as f32);
+                    let real_range = Range::new(rect.start.x, rect.end.x);
+                    let imaginary_range = Range::new(rect.start.y, rect.end.y);
+                    let target_re = Range::scale(&width_range, cx as f32, &real_range);
+                    let target_im = Range::scale(&height_range, cy as f32, &imaginary_range);
+                    self.mandelbrot.zoom.x *= zoom_factor;
+                    self.mandelbrot.zoom.y *= zoom_factor;
+                    self.mandelbrot.position.x = target_re + (self.mandelbrot.position.x - target_re) * zoom_factor;
+                    self.mandelbrot.position.y = target_im + (self.mandelbrot.position.y - target_im) * zoom_factor;
+                    window.request_redraw();
                 }
             }
             WindowEvent::MouseInput {
@@ -249,7 +255,12 @@ impl ApplicationHandler for App<'_> {
                             let size = window.inner_size();
                             pixels
                                 .render_with(|encoder, render_target, context| {
-                                    renderer.set_params(&context.queue, &self.mandelbrot, size.width as f32, size.height as f32);
+                                    renderer.set_params(
+                                        &context.queue,
+                                        &self.mandelbrot,
+                                        size.width as f32,
+                                        size.height as f32,
+                                    );
                                     renderer.render(encoder, render_target, (0, 0, size.width, size.height));
                                     Ok(())
                                 })
@@ -269,7 +280,10 @@ impl ApplicationHandler for App<'_> {
 
 fn main() -> Result<()> {
     let event_loop = EventLoop::new()?;
-    let mut app = App { gpu_rendering: true, ..Default::default() };
+    let mut app = App {
+        gpu_rendering: true,
+        ..Default::default()
+    };
     event_loop.run_app(&mut app)?;
     Ok(())
 }
