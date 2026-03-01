@@ -28,20 +28,14 @@ struct PerturbationParams {
     max_iterations: u32,
     orbit_length: u32,
     exponent: f32,
-    sa_a: [f32; 2],
-    sa_b: [f32; 2],
-    sa_c: [f32; 2],
     skip_iterations: u32,
-    sa_scale: f32,
-    // Precomputed SA normalization: zoom/scale and ref_offset/scale.
-    // Both CPU and GPU use these to compute u = pixel_offset * sa_zoom_norm - sa_ref_offset_norm,
-    // ensuring bit-identical SA evaluation (no order-of-operations f32 divergence).
+    num_sa_terms: u32,
     sa_zoom_norm: [f32; 2],
     sa_ref_offset_norm: [f32; 2],
 }
 
 fn bake_coloring_data(mandelbrot: &Mandelbrot) -> Vec<u8> {
-    let mut data = vec![0u8; (COLORING_SIZE * 4) as usize];
+    let mut data = vec![0; (COLORING_SIZE * 4) as usize];
     for i in 0..COLORING_SIZE {
         let s = i as f32 / (COLORING_SIZE - 1) as f32;
         let color = mandelbrot.color_at(s);
@@ -103,6 +97,7 @@ pub(crate) struct MandelbrotRenderer {
     perturbation_params_buffer: wgpu::Buffer,
     perturbation_bind_group: Option<wgpu::BindGroup>,
     reference_orbit_buffer: Option<wgpu::Buffer>,
+    sa_coefficient_buffer: Option<wgpu::Buffer>,
 }
 
 impl MandelbrotRenderer {
@@ -261,6 +256,16 @@ impl MandelbrotRenderer {
                         },
                         count: None,
                     },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 4,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: true },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
                 ],
             });
 
@@ -315,6 +320,7 @@ impl MandelbrotRenderer {
             perturbation_params_buffer,
             perturbation_bind_group: None,
             reference_orbit_buffer: None,
+            sa_coefficient_buffer: None,
         }
     }
 
@@ -342,7 +348,7 @@ impl MandelbrotRenderer {
         });
 
         // Rebuild perturbation bind group with new texture if orbit buffer exists
-        if let Some(orbit_buffer) = &self.reference_orbit_buffer {
+        if let (Some(orbit_buffer), Some(sa_buffer)) = (&self.reference_orbit_buffer, &self.sa_coefficient_buffer) {
             self.perturbation_bind_group = Some(device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: None,
                 layout: &self.perturbation_bind_group_layout,
@@ -362,6 +368,10 @@ impl MandelbrotRenderer {
                     wgpu::BindGroupEntry {
                         binding: 3,
                         resource: orbit_buffer.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 4,
+                        resource: sa_buffer.as_entire_binding(),
                     },
                 ],
             }));
@@ -410,14 +420,21 @@ impl MandelbrotRenderer {
         device: &wgpu::Device,
         orbit: &ReferenceOrbit,
     ) {
-        // Convert f64 orbit to f32 for GPU upload
-        let orbit_f32: Vec<[f32; 2]> = orbit.values.iter()
+        let orbit_values: Vec<[f32; 2]> = orbit.values.iter()
             .map(|v| [v[0] as f32, v[1] as f32])
             .collect();
-        let orbit_data: &[u8] = bytemuck::cast_slice(&orbit_f32);
         let orbit_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: None,
-            contents: orbit_data,
+            contents: bytemuck::cast_slice(&orbit_values),
+            usage: wgpu::BufferUsages::STORAGE,
+        });
+
+        let sa_coeffs: Vec<[f32; 2]> = orbit.sa_coefficients.as_ref()
+            .map(|sa| sa.coefficients.iter().map(|c| [c[0] as f32, c[1] as f32]).collect())
+            .unwrap_or_else(|| vec![[0.0, 0.0]]);
+        let sa_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: None,
+            contents: bytemuck::cast_slice(&sa_coeffs),
             usage: wgpu::BufferUsages::STORAGE,
         });
 
@@ -441,10 +458,15 @@ impl MandelbrotRenderer {
                     binding: 3,
                     resource: orbit_buffer.as_entire_binding(),
                 },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: sa_buffer.as_entire_binding(),
+                },
             ],
         }));
 
         self.reference_orbit_buffer = Some(orbit_buffer);
+        self.sa_coefficient_buffer = Some(sa_buffer);
     }
 
     pub(crate) fn set_perturbation_params(
@@ -460,24 +482,27 @@ impl MandelbrotRenderer {
             .map(|o| o.escape_iteration.min(mandelbrot.max_iterations))
             .unwrap_or(0) as u32;
 
-        // SA coefficients are already f32 scaled — same values used by CPU path
-        let (sa_a, sa_b, sa_c, skip_iterations, sa_scale_f64) = mandelbrot
+        // SA coefficients metadata
+        let (skip_iterations, num_sa_terms, sa_scale) = mandelbrot
             .reference_orbit
             .as_ref()
             .and_then(|o| o.sa_coefficients.as_ref())
-            .map(|sa| (sa.a, sa.b, sa.c, sa.skip_iterations as u32, sa.scale))
-            .unwrap_or(([0.0; 2], [0.0; 2], [0.0; 2], 0, 1.0));
+            .map(|sa| {
+                (sa.skip_iterations as u32, sa.coefficients.len() as u32, sa.scale)
+            })
+            .unwrap_or((0, 0, 1.0));
 
-        let sa_zoom_norm = if sa_scale_f64 > 0.0 {
-            [(mandelbrot.zoom.x / sa_scale_f64) as f32, (mandelbrot.zoom.y / sa_scale_f64) as f32]
+        // zoom_norm and ref_offset_norm computed in f64 on CPU to avoid
+        // FTZ and precision loss, then cast to f32 for GPU upload.
+        let sa_zoom_norm = if sa_scale > 0.0 {
+            [(mandelbrot.zoom.x / sa_scale) as f32,
+             (mandelbrot.zoom.y / sa_scale) as f32]
         } else {
             [0.0, 0.0]
         };
-        let sa_ref_offset_norm = if sa_scale_f64 > 0.0 {
-            [
-                (mandelbrot.reference_offset.0 / sa_scale_f64) as f32,
-                (mandelbrot.reference_offset.1 / sa_scale_f64) as f32,
-            ]
+        let sa_ref_offset_norm = if sa_scale > 0.0 {
+            [(mandelbrot.reference_offset.0 / sa_scale) as f32,
+             (mandelbrot.reference_offset.1 / sa_scale) as f32]
         } else {
             [0.0, 0.0]
         };
@@ -494,11 +519,8 @@ impl MandelbrotRenderer {
             max_iterations: mandelbrot.max_iterations as u32,
             orbit_length,
             exponent: mandelbrot.exponent,
-            sa_a,
-            sa_b,
-            sa_c,
             skip_iterations,
-            sa_scale: sa_scale_f64 as f32,
+            num_sa_terms,
             sa_zoom_norm,
             sa_ref_offset_norm,
         };

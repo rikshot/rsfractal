@@ -9,9 +9,9 @@ use strum::{Display, EnumIter, EnumString};
 
 use crate::boundary_scanner::BoundaryScanner;
 use crate::perturbation::{
-    compute_reference_orbit_with_sa, iterate_perturbation, iterate_perturbation_with_sa,
-    needs_perturbation, recompute_sa, required_precision_bits,
-    test_orbit_f64, HighPrecisionComplex, HighPrecisionPosition, ReferenceOrbit,
+    compute_reference_orbit_with_sa, iterate_perturbation, needs_perturbation, recompute_sa,
+    required_precision_bits, test_orbit_f64, HighPrecisionComplex, HighPrecisionPosition,
+    ReferenceOrbit,
 };
 
 use super::range::Range;
@@ -40,6 +40,7 @@ pub struct Mandelbrot {
     pub reference_offset: (f64, f64),
     pub reference_point: Option<HighPrecisionComplex>,
     pub perturbation_dirty: bool,
+    pub sa_order: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Display, EnumString, EnumIter, Serialize)]
@@ -450,8 +451,8 @@ impl Mandelbrot {
             }
 
             let hp = self.high_precision_position.as_ref().unwrap();
-            let center_re: f64 = hp.x.to_f64().value();
-            let center_im: f64 = hp.y.to_f64().value();
+            let center_re = hp.x.to_f64().value();
+            let center_im = hp.y.to_f64().value();
             let precision = hp.x.precision();
 
             // Try to reuse existing reference point — just update the offset
@@ -460,10 +461,8 @@ impl Mandelbrot {
                 // Converting rp and hp to f64 separately and subtracting loses precision
                 // when both are near the same value (e.g., -0.67) and the difference is
                 // tiny (e.g., 1e-33) — f64 subtraction gives 0 due to catastrophic cancellation.
-                let off_re_hp = (&rp.re - &hp.x).to_f64().value();
-                let off_im_hp = (&rp.im - &hp.y).to_f64().value();
-                let off_re = off_re_hp;
-                let off_im = off_im_hp;
+                let off_re = (&rp.re - &hp.x).to_f64().value();
+                let off_im = (&rp.im - &hp.y).to_f64().value();
 
                 // Check if reference point is still within the viewport
                 let in_viewport = off_re.abs() < 2.0 * self.zoom.x
@@ -480,19 +479,28 @@ impl Mandelbrot {
                 if in_viewport && orbit_ok {
                     // Reuse — just update offset (no orbit recomputation!)
                     self.reference_offset = (off_re, off_im);
-                    // Recompute SA with current zoom's max_delta — the orbit may
-                    // have been computed at a wider zoom, so the SA polynomial
-                    // converges better now and can skip more iterations.
-                    let max_delta = self.zoom.x.hypot(self.zoom.y);
+                    // Recompute SA with current zoom's max_delta.
+                    // On zoom-in: SA converges better → more skip iterations.
+                    // On zoom-out: SA tolerance fails earlier → fewer skip iterations.
+                    // Always update to match the current viewport scale.
+                    // max_delta must cover the worst-case |dc| including reference offset.
+                    let max_delta = (self.zoom.x + self.reference_offset.0.abs())
+                        .hypot(self.zoom.y + self.reference_offset.1.abs());
                     if let Some(orbit) = &self.reference_orbit {
-                        let current_skip = orbit.sa_coefficients.as_ref()
-                            .map_or(0, |sa| sa.skip_iterations);
-                        if let Some(new_sa) = recompute_sa(orbit, max_delta) {
-                            if new_sa.skip_iterations > current_skip {
-                                let mut updated = (**orbit).clone();
-                                updated.sa_coefficients = Some(new_sa);
-                                self.reference_orbit = Some(Arc::new(updated));
+                        let new_sa = recompute_sa(orbit, max_delta, self.sa_order);
+                        let current_sa = orbit.sa_coefficients.as_ref();
+                        let needs_update = match (&new_sa, current_sa) {
+                            (Some(new), Some(old)) => {
+                                new.skip_iterations != old.skip_iterations
+                                    || (new.scale - old.scale).abs() > f64::EPSILON
                             }
+                            (Some(_), None) | (None, Some(_)) => true,
+                            (None, None) => false,
+                        };
+                        if needs_update {
+                            let mut updated = (**orbit).clone();
+                            updated.sa_coefficients = new_sa;
+                            self.reference_orbit = Some(Arc::new(updated));
                         }
                     }
                     false
@@ -534,7 +542,7 @@ impl Mandelbrot {
             let hp = self.high_precision_position.as_ref().unwrap();
             let ref_center = HighPrecisionComplex::new(hp.x.clone(), hp.y.clone());
             let max_delta = self.zoom.x.hypot(self.zoom.y);
-            let orbit = compute_reference_orbit_with_sa(&ref_center, self.max_iterations, self.bailout, max_delta);
+            let orbit = compute_reference_orbit_with_sa(&ref_center, self.max_iterations, self.bailout, max_delta, self.sa_order);
             self.reference_orbit = Some(Arc::new(orbit));
             self.reference_offset = (0.0, 0.0);
             self.reference_point = Some(ref_center);
@@ -542,7 +550,7 @@ impl Mandelbrot {
         }
 
         // Search nearby for a longer-lived reference
-        let mut best_offset = (0.0_f64, 0.0_f64);
+        let mut best_offset = (0.0, 0.0);
         let mut best_length = center_length;
 
         let steps = [-0.4, -0.2, -0.1, 0.0, 0.1, 0.2, 0.4];
@@ -583,12 +591,15 @@ impl Mandelbrot {
             hp.x.clone() + off_re_hp,
             hp.y.clone() + off_im_hp,
         );
-        let max_delta = self.zoom.x.hypot(self.zoom.y);
+        // max_delta must cover worst-case |dc| including reference offset
+        let max_delta = (self.zoom.x + best_offset.0.abs())
+            .hypot(self.zoom.y + best_offset.1.abs());
         let orbit = compute_reference_orbit_with_sa(
             &ref_center,
             self.max_iterations,
             self.bailout,
             max_delta,
+            self.sa_order,
         );
         self.reference_orbit = Some(Arc::new(orbit));
         self.reference_offset = (best_offset.0, best_offset.1);
@@ -597,78 +608,33 @@ impl Mandelbrot {
 
     fn render_smooth_perturbation(&self, pixels: &mut [u8], orbit: &ReferenceOrbit) {
         let lut = self.build_smooth_lut();
-        let bailout = self.bailout;
-
-        let zoom_x = self.zoom.x as f32;
-        let zoom_y = self.zoom.y as f32;
-        let ref_off_re = self.reference_offset.0 as f32;
-        let ref_off_im = self.reference_offset.1 as f32;
+        let bailout = self.bailout as f64;
+        let zoom_x = self.zoom.x;
+        let zoom_y = self.zoom.y;
+        let ref_off_re = self.reference_offset.0;
+        let ref_off_im = self.reference_offset.1;
         let width = self.width;
         let height = self.height;
         let max_iterations = self.max_iterations;
         let exponent = self.exponent;
-
-        // Precompute SA normalization values (matching GPU uniforms).
-        // u = pixel_offset * zoom_norm - ref_offset_norm avoids subnormal
-        // intermediates and ensures CPU/GPU bit-identical SA evaluation.
-        let limit = orbit.escape_iteration.min(max_iterations);
-        let sa_info = orbit.sa_coefficients.as_ref().and_then(|sa| {
-            if sa.skip_iterations > 0 && sa.skip_iterations < limit && sa.scale > 0.0 {
-                Some((
-                    [(self.zoom.x / sa.scale) as f32, (self.zoom.y / sa.scale) as f32],
-                    [(self.reference_offset.0 / sa.scale) as f32, (self.reference_offset.1 / sa.scale) as f32],
-                    sa.a,
-                    sa.b,
-                    sa.c,
-                    sa.skip_iterations,
-                ))
-            } else {
-                None
-            }
-        });
 
         pixels
             .par_chunks_exact_mut(4)
             .enumerate()
             .by_uniform_blocks(self.chunk_size)
             .for_each(|(index, pixel)| {
-                let px = (index % width) as f32;
-                let py = (index / width) as f32;
+                let px = (index % width) as f64;
+                let py = (index / width) as f64;
 
-                let pixel_offset_re = px / width as f32 * 2.0 - 1.0;
-                let pixel_offset_im = py / height as f32 * 2.0 - 1.0;
+                let dc_re = (px / width as f64 * 2.0 - 1.0) * zoom_x - ref_off_re;
+                let dc_im = (py / height as f64 * 2.0 - 1.0) * zoom_y - ref_off_im;
 
-                // Compute delta from reference point (not viewport center)
-                let dc_re = pixel_offset_re * zoom_x - ref_off_re;
-                let dc_im = pixel_offset_im * zoom_y - ref_off_im;
-
-                let (norm_sq, iterations) = if let Some((zoom_norm, ref_offset_norm, sa_a, sa_b, sa_c, skip_n)) = &sa_info {
-                    // Evaluate SA using the same formula as the GPU shader:
-                    // u = pixel_offset * zoom_norm - ref_offset_norm
-                    let u_re = pixel_offset_re * zoom_norm[0] - ref_offset_norm[0];
-                    let u_im = pixel_offset_im * zoom_norm[1] - ref_offset_norm[1];
-                    let u2_re = u_re * u_re - u_im * u_im;
-                    let u2_im = 2.0f32 * u_re * u_im;
-                    let u3_re = u2_re * u_re - u2_im * u_im;
-                    let u3_im = u2_re * u_im + u2_im * u_re;
-
-                    let eps_re = sa_a[0] * u_re - sa_a[1] * u_im
-                        + sa_b[0] * u2_re - sa_b[1] * u2_im
-                        + sa_c[0] * u3_re - sa_c[1] * u3_im;
-                    let eps_im = sa_a[0] * u_im + sa_a[1] * u_re
-                        + sa_b[0] * u2_im + sa_b[1] * u2_re
-                        + sa_c[0] * u3_im + sa_c[1] * u3_re;
-
-                    iterate_perturbation_with_sa(
-                        orbit, dc_re, dc_im, max_iterations, bailout,
-                        (eps_re, eps_im, *skip_n),
-                    )
-                } else {
-                    iterate_perturbation(orbit, dc_re, dc_im, max_iterations, bailout)
-                };
+                let (norm_sq, iterations) =
+                    iterate_perturbation(orbit, dc_re, dc_im, max_iterations, bailout);
 
                 if iterations < max_iterations {
-                    let zn = norm_sq.ln() / 2.0;
+                    let norm_sq_f32 = norm_sq as f32;
+                    let zn = norm_sq_f32.ln() / 2.0;
                     let nu = f32::ln(zn / std::f32::consts::LN_2) / std::f32::consts::LN_2;
                     let smooth = (iterations + 1) as f32 - nu;
                     let s = f32::powf(smooth / max_iterations as f32, exponent);
@@ -721,6 +687,7 @@ impl Default for Mandelbrot {
             reference_offset: (0.0, 0.0),
             reference_point: None,
             perturbation_dirty: true,
+            sa_order: 6,
         }
     }
 }
