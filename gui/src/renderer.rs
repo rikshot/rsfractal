@@ -1,7 +1,6 @@
 use pixels::wgpu::{self, util::DeviceExt};
 use rsfractal_mandelbrot::mandelbrot::Mandelbrot;
 use rsfractal_mandelbrot::range::Range;
-#[cfg(feature = "perturbation")]
 use rsfractal_mandelbrot::perturbation::ReferenceOrbit;
 
 const COLORING_SIZE: u32 = 4096;
@@ -18,7 +17,6 @@ struct Params {
     _padding: [u8; 12],
 }
 
-#[cfg(feature = "perturbation")]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 #[repr(C)]
 struct PerturbationParams {
@@ -100,15 +98,10 @@ pub(crate) struct MandelbrotRenderer {
     render_pipeline: wgpu::RenderPipeline,
     bind_group_layout: wgpu::BindGroupLayout,
     bind_group: wgpu::BindGroup,
-    #[cfg(feature = "perturbation")]
     perturbation_pipeline: wgpu::RenderPipeline,
-    #[cfg(feature = "perturbation")]
     perturbation_bind_group_layout: wgpu::BindGroupLayout,
-    #[cfg(feature = "perturbation")]
     perturbation_params_buffer: wgpu::Buffer,
-    #[cfg(feature = "perturbation")]
     perturbation_bind_group: Option<wgpu::BindGroup>,
-    #[cfg(feature = "perturbation")]
     reference_orbit_buffer: Option<wgpu::Buffer>,
 }
 
@@ -220,14 +213,12 @@ impl MandelbrotRenderer {
         });
 
         // Perturbation pipeline setup
-        #[cfg(feature = "perturbation")]
         let perturbation_params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: None,
             contents: &[0u8; std::mem::size_of::<PerturbationParams>()],
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
-        #[cfg(feature = "perturbation")]
         let perturbation_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: None,
@@ -273,7 +264,6 @@ impl MandelbrotRenderer {
                 ],
             });
 
-        #[cfg(feature = "perturbation")]
         let perturbation_pipeline = {
             let perturbation_shader = wgpu::include_wgsl!("perturbation.wgsl");
             let perturbation_module = device.create_shader_module(perturbation_shader);
@@ -320,15 +310,10 @@ impl MandelbrotRenderer {
             render_pipeline,
             bind_group_layout,
             bind_group,
-            #[cfg(feature = "perturbation")]
             perturbation_pipeline,
-            #[cfg(feature = "perturbation")]
             perturbation_bind_group_layout,
-            #[cfg(feature = "perturbation")]
             perturbation_params_buffer,
-            #[cfg(feature = "perturbation")]
             perturbation_bind_group: None,
-            #[cfg(feature = "perturbation")]
             reference_orbit_buffer: None,
         }
     }
@@ -357,7 +342,6 @@ impl MandelbrotRenderer {
         });
 
         // Rebuild perturbation bind group with new texture if orbit buffer exists
-        #[cfg(feature = "perturbation")]
         if let Some(orbit_buffer) = &self.reference_orbit_buffer {
             self.perturbation_bind_group = Some(device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: None,
@@ -421,7 +405,6 @@ impl MandelbrotRenderer {
         rpass.draw(0..3, 0..1);
     }
 
-    #[cfg(feature = "perturbation")]
     pub(crate) fn update_perturbation(
         &mut self,
         device: &wgpu::Device,
@@ -464,7 +447,6 @@ impl MandelbrotRenderer {
         self.reference_orbit_buffer = Some(orbit_buffer);
     }
 
-    #[cfg(feature = "perturbation")]
     pub(crate) fn set_perturbation_params(
         &self,
         queue: &wgpu::Queue,
@@ -527,7 +509,6 @@ impl MandelbrotRenderer {
         );
     }
 
-    #[cfg(feature = "perturbation")]
     pub(crate) fn render_perturbation(
         &self,
         encoder: &mut wgpu::CommandEncoder,
@@ -564,15 +545,9 @@ impl MandelbrotRenderer {
         texture_format: wgpu::TextureFormat,
     ) -> Vec<u8> {
         // Set uniforms
-        #[cfg(feature = "perturbation")]
         if use_perturbation {
             self.set_perturbation_params(queue, mandelbrot, width as f32, height as f32);
         } else {
-            self.set_params(queue, mandelbrot, width as f32, height as f32);
-        }
-        #[cfg(not(feature = "perturbation"))]
-        {
-            let _ = use_perturbation;
             self.set_params(queue, mandelbrot, width as f32, height as f32);
         }
 
@@ -605,14 +580,11 @@ impl MandelbrotRenderer {
         // Render to offscreen texture
         let mut encoder = device.create_command_encoder(&Default::default());
 
-        #[cfg(feature = "perturbation")]
         if use_perturbation {
             self.render_perturbation(&mut encoder, &texture_view, (0, 0, width, height));
         } else {
             self.render(&mut encoder, &texture_view, (0, 0, width, height));
         }
-        #[cfg(not(feature = "perturbation"))]
-        self.render(&mut encoder, &texture_view, (0, 0, width, height));
 
         // Copy texture to staging buffer
         encoder.copy_texture_to_buffer(

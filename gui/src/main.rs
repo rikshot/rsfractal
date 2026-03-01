@@ -59,10 +59,7 @@ impl App<'_> {
         img.save(format!("{dir}/cpu_render.png")).unwrap();
 
         // GPU render
-        #[cfg(feature = "perturbation")]
         let use_perturbation = self.mandelbrot.perturbation_active;
-        #[cfg(not(feature = "perturbation"))]
-        let use_perturbation = false;
 
         if let (Some(pixels), Some(renderer)) = (&self.pixels, &self.renderer) {
             let gpu_buf = renderer.render_to_image(
@@ -94,14 +91,11 @@ impl App<'_> {
             };
             let iterations = self.mandelbrot.max_iterations;
 
-            #[cfg(feature = "perturbation")]
             let perturbation_str = if self.mandelbrot.perturbation_active {
                 " | Perturbation"
             } else {
                 ""
             };
-            #[cfg(not(feature = "perturbation"))]
-            let perturbation_str = "";
 
             if self.gpu_rendering {
                 window.set_title(&format!("rsfractal | (M)ode: {renderer} | (C)oloring: {coloring} | Iterations(↑↓): {iterations}{perturbation_str} | {fps:.1} fps"));
@@ -247,8 +241,7 @@ impl ApplicationHandler for App<'_> {
                 }
                 KeyCode::ArrowUp => {
                     self.mandelbrot.max_iterations = (self.mandelbrot.max_iterations * 2).min(100000);
-                    #[cfg(feature = "perturbation")]
-                    { self.mandelbrot.perturbation_dirty = true; }
+                    self.mandelbrot.perturbation_dirty = true;
                     self.update_title();
                     if let Some(window) = &self.window {
                         window.request_redraw();
@@ -256,8 +249,7 @@ impl ApplicationHandler for App<'_> {
                 }
                 KeyCode::ArrowDown => {
                     self.mandelbrot.max_iterations = (self.mandelbrot.max_iterations / 2).max(10);
-                    #[cfg(feature = "perturbation")]
-                    { self.mandelbrot.perturbation_dirty = true; }
+                    self.mandelbrot.perturbation_dirty = true;
                     self.update_title();
                     if let Some(window) = &self.window {
                         window.request_redraw();
@@ -284,7 +276,6 @@ impl ApplicationHandler for App<'_> {
                     let (cx, cy) = self.cursor_position;
 
                     // Update HP position before modifying zoom
-                    #[cfg(feature = "perturbation")]
                     self.mandelbrot.zoom_hp(
                         cx / size.width as f64,
                         cy / size.height as f64,
@@ -313,7 +304,6 @@ impl ApplicationHandler for App<'_> {
 
                     // When HP position is available, sync f32 position from it —
                     // HP accumulates sub-f64 offsets that the f64 computation above loses.
-                    #[cfg(feature = "perturbation")]
                     if let Some(hp) = &self.mandelbrot.high_precision_position {
                         self.mandelbrot.position.x = hp.x.to_f64().value() as f32;
                         self.mandelbrot.position.y = hp.y.to_f64().value() as f32;
@@ -340,7 +330,6 @@ impl ApplicationHandler for App<'_> {
                 self.last_frame = Some(now);
 
                 // Update perturbation state before rendering
-                #[cfg(feature = "perturbation")]
                 {
                     let was_dirty = self.mandelbrot.perturbation_dirty;
                     let was_active = self.mandelbrot.perturbation_active;
@@ -357,17 +346,13 @@ impl ApplicationHandler for App<'_> {
                     }
                 }
 
-                #[cfg(feature = "perturbation")]
                 let use_perturbation = self.mandelbrot.perturbation_active;
-                #[cfg(not(feature = "perturbation"))]
-                let use_perturbation = false;
 
                 if let Some(pixels) = &mut self.pixels {
                     if self.gpu_rendering {
                         if let (Some(renderer), Some(window)) = (&self.renderer, &self.window) {
                             let size = window.inner_size();
                             if use_perturbation {
-                                #[cfg(feature = "perturbation")]
                                 pixels
                                     .render_with(|encoder, render_target, context| {
                                         renderer.set_perturbation_params(

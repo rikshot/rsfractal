@@ -9,10 +9,6 @@ homepage.workspace = true
 repository.workspace = true
 license.workspace = true
 
-[features]
-default = ["perturbation"]
-perturbation = ["rsfractal-mandelbrot/perturbation"]
-
 [dependencies]
 rsfractal-mandelbrot = { path = "../mandelbrot" }
 winit = "*"

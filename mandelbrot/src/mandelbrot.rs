@@ -1,5 +1,4 @@
 use std::fmt::Debug;
-#[cfg(feature = "perturbation")]
 use std::sync::Arc;
 
 use colorgrad::{CatmullRomGradient, Color, Gradient, GradientBuilder};
@@ -9,7 +8,6 @@ use serde::Serialize;
 use strum::{Display, EnumIter, EnumString};
 
 use crate::boundary_scanner::BoundaryScanner;
-#[cfg(feature = "perturbation")]
 use crate::perturbation::{
     compute_reference_orbit_with_sa, iterate_perturbation, iterate_perturbation_with_sa,
     needs_perturbation, recompute_sa, required_precision_bits,
@@ -36,17 +34,11 @@ pub struct Mandelbrot {
     #[serde(skip)]
     pub(crate) palettes: Vec<(String, CatmullRomGradient)>,
     pub selected_palette: usize,
-    #[cfg(feature = "perturbation")]
     pub high_precision_position: Option<HighPrecisionPosition>,
-    #[cfg(feature = "perturbation")]
     pub reference_orbit: Option<Arc<ReferenceOrbit>>,
-    #[cfg(feature = "perturbation")]
     pub perturbation_active: bool,
-    #[cfg(feature = "perturbation")]
     pub reference_offset: (f64, f64),
-    #[cfg(feature = "perturbation")]
     pub reference_point: Option<HighPrecisionComplex>,
-    #[cfg(feature = "perturbation")]
     pub perturbation_dirty: bool,
 }
 
@@ -91,7 +83,6 @@ impl Mandelbrot {
     }
 
     pub fn render(&self, pixels: &mut [u8]) {
-        #[cfg(feature = "perturbation")]
         if self.perturbation_active {
             if let Some(orbit) = &self.reference_orbit {
                 self.render_smooth_perturbation(pixels, orbit);
@@ -303,7 +294,6 @@ impl Mandelbrot {
     }
 
     pub fn zoom(&mut self, x: f32, y: f32, zoom_factor: f32) {
-        #[cfg(feature = "perturbation")]
         if let Some(hp) = &mut self.high_precision_position {
             // Compute cursor offset from center in complex plane using f64
             let cursor_frac_x = x as f64 / self.width as f64;
@@ -347,7 +337,6 @@ impl Mandelbrot {
         self.position.x -= dx;
         self.position.y -= dy;
 
-        #[cfg(feature = "perturbation")]
         if let Some(hp) = &mut self.high_precision_position {
             let precision = hp.x.precision();
             let dx_hp =
@@ -412,7 +401,6 @@ impl Mandelbrot {
     }
 }
 
-#[cfg(feature = "perturbation")]
 impl Mandelbrot {
     /// Update HP position for zoom toward cursor. Call before modifying zoom.
     /// `cursor_frac_x/y` are cursor position as fraction of window size (0..1).
@@ -727,17 +715,11 @@ impl Default for Mandelbrot {
             exponent: 1.0,
             palettes,
             selected_palette: 0,
-            #[cfg(feature = "perturbation")]
             high_precision_position: None,
-            #[cfg(feature = "perturbation")]
             reference_orbit: None,
-            #[cfg(feature = "perturbation")]
             perturbation_active: false,
-            #[cfg(feature = "perturbation")]
             reference_offset: (0.0, 0.0),
-            #[cfg(feature = "perturbation")]
             reference_point: None,
-            #[cfg(feature = "perturbation")]
             perturbation_dirty: true,
         }
     }

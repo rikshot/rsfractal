@@ -9,10 +9,6 @@ homepage.workspace = true
 repository.workspace = true
 license.workspace = true
 
-[features]
-default = []
-perturbation = ["dashu"]
-
 [dependencies]
 num = "*"
 rayon = "*"
@@ -23,7 +19,7 @@ image = { version = "*", default-features = false, features = [
     "png",
 ], optional = true }
 strum = { version = "*", features = ["derive"] }
-dashu = { version = "*", optional = true }
+dashu = "*"
 
 [dev-dependencies]
 divan = "*"
