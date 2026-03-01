@@ -1,11 +1,13 @@
-#[derive(Debug, Clone)]
-pub struct Vector {
-    pub x: f32,
-    pub y: f32,
+use serde::Serialize;
+
+#[derive(Debug, Clone, Serialize)]
+pub struct Vector<T = f32> {
+    pub x: T,
+    pub y: T,
 }
 
-impl Vector {
-    pub fn new(x: f32, y: f32) -> Self {
+impl<T> Vector<T> {
+    pub fn new(x: T, y: T) -> Self {
         Self { x, y }
     }
 }

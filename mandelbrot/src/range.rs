@@ -1,8 +1,11 @@
-#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+use serde::Serialize;
+
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable, Serialize)]
 #[repr(C)]
 pub struct Range {
     min: f32,
     max: f32,
+    #[serde(skip)]
     _padding: [f32; 2],
 }
 

@@ -30,6 +30,16 @@ struct PerturbationParams {
     max_iterations: u32,
     orbit_length: u32,
     exponent: f32,
+    sa_a: [f32; 2],
+    sa_b: [f32; 2],
+    sa_c: [f32; 2],
+    skip_iterations: u32,
+    sa_scale: f32,
+    // Precomputed SA normalization: zoom/scale and ref_offset/scale.
+    // Both CPU and GPU use these to compute u = pixel_offset * sa_zoom_norm - sa_ref_offset_norm,
+    // ensuring bit-identical SA evaluation (no order-of-operations f32 divergence).
+    sa_zoom_norm: [f32; 2],
+    sa_ref_offset_norm: [f32; 2],
 }
 
 fn bake_coloring_data(mandelbrot: &Mandelbrot) -> Vec<u8> {
@@ -417,7 +427,11 @@ impl MandelbrotRenderer {
         device: &wgpu::Device,
         orbit: &ReferenceOrbit,
     ) {
-        let orbit_data: &[u8] = bytemuck::cast_slice(&orbit.values_f32);
+        // Convert f64 orbit to f32 for GPU upload
+        let orbit_f32: Vec<[f32; 2]> = orbit.values.iter()
+            .map(|v| [v[0] as f32, v[1] as f32])
+            .collect();
+        let orbit_data: &[u8] = bytemuck::cast_slice(&orbit_f32);
         let orbit_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: None,
             contents: orbit_data,
@@ -464,9 +478,31 @@ impl MandelbrotRenderer {
             .map(|o| o.escape_iteration.min(mandelbrot.max_iterations))
             .unwrap_or(0) as u32;
 
+        // SA coefficients are already f32 scaled — same values used by CPU path
+        let (sa_a, sa_b, sa_c, skip_iterations, sa_scale_f64) = mandelbrot
+            .reference_orbit
+            .as_ref()
+            .and_then(|o| o.sa_coefficients.as_ref())
+            .map(|sa| (sa.a, sa.b, sa.c, sa.skip_iterations as u32, sa.scale))
+            .unwrap_or(([0.0; 2], [0.0; 2], [0.0; 2], 0, 1.0));
+
+        let sa_zoom_norm = if sa_scale_f64 > 0.0 {
+            [(mandelbrot.zoom.x / sa_scale_f64) as f32, (mandelbrot.zoom.y / sa_scale_f64) as f32]
+        } else {
+            [0.0, 0.0]
+        };
+        let sa_ref_offset_norm = if sa_scale_f64 > 0.0 {
+            [
+                (mandelbrot.reference_offset.0 / sa_scale_f64) as f32,
+                (mandelbrot.reference_offset.1 / sa_scale_f64) as f32,
+            ]
+        } else {
+            [0.0, 0.0]
+        };
+
         let params = PerturbationParams {
             viewport: [viewport_width, viewport_height],
-            zoom: [mandelbrot.zoom.x, mandelbrot.zoom.y],
+            zoom: [mandelbrot.zoom.x as f32, mandelbrot.zoom.y as f32],
             reference_offset: [
                 mandelbrot.reference_offset.0 as f32,
                 mandelbrot.reference_offset.1 as f32,
@@ -476,6 +512,13 @@ impl MandelbrotRenderer {
             max_iterations: mandelbrot.max_iterations as u32,
             orbit_length,
             exponent: mandelbrot.exponent,
+            sa_a,
+            sa_b,
+            sa_c,
+            skip_iterations,
+            sa_scale: sa_scale_f64 as f32,
+            sa_zoom_norm,
+            sa_ref_offset_norm,
         };
         queue.write_buffer(
             &self.perturbation_params_buffer,
@@ -508,5 +551,120 @@ impl MandelbrotRenderer {
             rpass.set_scissor_rect(clip_rect.0, clip_rect.1, clip_rect.2, clip_rect.3);
             rpass.draw(0..3, 0..1);
         }
+    }
+
+    pub(crate) fn render_to_image(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        mandelbrot: &Mandelbrot,
+        width: u32,
+        height: u32,
+        use_perturbation: bool,
+        texture_format: wgpu::TextureFormat,
+    ) -> Vec<u8> {
+        // Set uniforms
+        #[cfg(feature = "perturbation")]
+        if use_perturbation {
+            self.set_perturbation_params(queue, mandelbrot, width as f32, height as f32);
+        } else {
+            self.set_params(queue, mandelbrot, width as f32, height as f32);
+        }
+        #[cfg(not(feature = "perturbation"))]
+        {
+            let _ = use_perturbation;
+            self.set_params(queue, mandelbrot, width as f32, height as f32);
+        }
+
+        // Create offscreen render target
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("debug_offscreen"),
+            size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: texture_format,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[],
+        });
+        let texture_view = texture.create_view(&Default::default());
+
+        // Staging buffer with row alignment
+        let bytes_per_pixel = 4u32;
+        let unpadded_bytes_per_row = width * bytes_per_pixel;
+        let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+        let padded_bytes_per_row = (unpadded_bytes_per_row + align - 1) / align * align;
+
+        let staging_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("debug_staging"),
+            size: (padded_bytes_per_row * height) as u64,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+
+        // Render to offscreen texture
+        let mut encoder = device.create_command_encoder(&Default::default());
+
+        #[cfg(feature = "perturbation")]
+        if use_perturbation {
+            self.render_perturbation(&mut encoder, &texture_view, (0, 0, width, height));
+        } else {
+            self.render(&mut encoder, &texture_view, (0, 0, width, height));
+        }
+        #[cfg(not(feature = "perturbation"))]
+        self.render(&mut encoder, &texture_view, (0, 0, width, height));
+
+        // Copy texture to staging buffer
+        encoder.copy_texture_to_buffer(
+            wgpu::ImageCopyTexture {
+                texture: &texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::ImageCopyBuffer {
+                buffer: &staging_buffer,
+                layout: wgpu::ImageDataLayout {
+                    offset: 0,
+                    bytes_per_row: Some(padded_bytes_per_row),
+                    rows_per_image: Some(height),
+                },
+            },
+            wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+        );
+
+        queue.submit(std::iter::once(encoder.finish()));
+
+        // Read back pixels
+        let buffer_slice = staging_buffer.slice(..);
+        let (sender, receiver) = std::sync::mpsc::channel();
+        buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
+            sender.send(result).unwrap();
+        });
+        device.poll(wgpu::Maintain::Wait);
+        receiver.recv().unwrap().unwrap();
+
+        let data = buffer_slice.get_mapped_range();
+        let is_bgra = matches!(
+            texture_format,
+            wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb
+        );
+
+        let mut result = Vec::with_capacity((width * height * 4) as usize);
+        for row in 0..height {
+            let offset = (row * padded_bytes_per_row) as usize;
+            let row_data = &data[offset..offset + unpadded_bytes_per_row as usize];
+            if is_bgra {
+                for pixel in row_data.chunks_exact(4) {
+                    result.extend_from_slice(&[pixel[2], pixel[1], pixel[0], pixel[3]]);
+                }
+            } else {
+                result.extend_from_slice(row_data);
+            }
+        }
+
+        drop(data);
+        staging_buffer.unmap();
+        result
     }
 }

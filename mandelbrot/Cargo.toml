@@ -18,6 +18,7 @@ num = "*"
 rayon = "*"
 bytemuck = { version = "*", features = ["derive"] }
 colorgrad = { version = "*", features = ["lab"] }
+serde = { version = "*", features = ["derive", "rc"] }
 image = { version = "*", default-features = false, features = [
     "png",
 ], optional = true }

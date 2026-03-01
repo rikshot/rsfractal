@@ -1,6 +1,8 @@
+use serde::Serialize;
+
 use super::vector::Vector;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Rectangle {
     pub start: Vector,
     pub end: Vector,

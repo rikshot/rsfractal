@@ -2810,9 +2810,11 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "bytemuck",
+ "image",
  "num-complex",
  "pixels",
  "rsfractal-mandelbrot",
+ "serde_json",
  "winit",
 ]
 
@@ -2827,6 +2829,7 @@ dependencies = [
  "image",
  "num",
  "rayon",
+ "serde",
  "strum",
 ]
 

@@ -4,8 +4,7 @@ use std::time::Instant;
 use anyhow::Result;
 use pixels::{Pixels, SurfaceTexture};
 use renderer::MandelbrotRenderer;
-use rsfractal_mandelbrot::mandelbrot::{Coloring, Mandelbrot, Rendering, rect_from_position};
-use rsfractal_mandelbrot::range::Range;
+use rsfractal_mandelbrot::mandelbrot::{Coloring, Mandelbrot, Rendering};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::{DeviceEvent, ElementState, KeyEvent, MouseButton, MouseScrollDelta, WindowEvent};
@@ -32,6 +31,56 @@ const MIN_WIDTH: u32 = 1280;
 const MIN_HEIGHT: u32 = 720;
 
 impl App<'_> {
+    fn debug_dump(&mut self) {
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let dir = format!("debug_dump_{timestamp}");
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let json = serde_json::to_string_pretty(&self.mandelbrot).unwrap();
+        std::fs::write(format!("{dir}/state.json"), &json).unwrap();
+
+        // Use window size for both renders so they're directly comparable
+        let (width, height) = self.window.as_ref().map_or(
+            (self.mandelbrot.width as u32, self.mandelbrot.height as u32),
+            |w| { let s = w.inner_size(); (s.width, s.height) },
+        );
+
+        // CPU render
+        let saved_size = (self.mandelbrot.width, self.mandelbrot.height);
+        self.mandelbrot.set_resolution(width as usize, height as usize);
+        let mut cpu_buf = vec![0u8; (width * height * 4) as usize];
+        self.mandelbrot.render(&mut cpu_buf);
+        self.mandelbrot.set_resolution(saved_size.0, saved_size.1);
+
+        let img = image::RgbaImage::from_raw(width, height, cpu_buf).unwrap();
+        img.save(format!("{dir}/cpu_render.png")).unwrap();
+
+        // GPU render
+        #[cfg(feature = "perturbation")]
+        let use_perturbation = self.mandelbrot.perturbation_active;
+        #[cfg(not(feature = "perturbation"))]
+        let use_perturbation = false;
+
+        if let (Some(pixels), Some(renderer)) = (&self.pixels, &self.renderer) {
+            let gpu_buf = renderer.render_to_image(
+                pixels.device(),
+                pixels.queue(),
+                &self.mandelbrot,
+                width,
+                height,
+                use_perturbation,
+                pixels.render_texture_format(),
+            );
+            let img = image::RgbaImage::from_raw(width, height, gpu_buf).unwrap();
+            img.save(format!("{dir}/gpu_render.png")).unwrap();
+        }
+
+        eprintln!("Debug dump saved to {dir}/");
+    }
+
     fn update_title(&self) {
         if let Some(window) = &self.window {
             let renderer = if self.gpu_rendering { "GPU" } else { "CPU" };
@@ -193,6 +242,9 @@ impl ApplicationHandler for App<'_> {
                         window.request_redraw();
                     }
                 }
+                KeyCode::KeyD => {
+                    self.debug_dump();
+                }
                 KeyCode::ArrowUp => {
                     self.mandelbrot.max_iterations = (self.mandelbrot.max_iterations * 2).min(100000);
                     #[cfg(feature = "perturbation")]
@@ -239,17 +291,34 @@ impl ApplicationHandler for App<'_> {
                         zoom_factor as f64,
                     );
 
-                    let rect = rect_from_position(&self.mandelbrot.position, &self.mandelbrot.zoom);
-                    let width_range = Range::new(0.0, size.width as f32);
-                    let height_range = Range::new(0.0, size.height as f32);
-                    let real_range = Range::new(rect.start.x, rect.end.x);
-                    let imaginary_range = Range::new(rect.start.y, rect.end.y);
-                    let target_re = Range::scale(&width_range, cx as f32, &real_range);
-                    let target_im = Range::scale(&height_range, cy as f32, &imaginary_range);
-                    self.mandelbrot.zoom.x *= zoom_factor;
-                    self.mandelbrot.zoom.y *= zoom_factor;
-                    self.mandelbrot.position.x = target_re + (self.mandelbrot.position.x - target_re) * zoom_factor;
-                    self.mandelbrot.position.y = target_im + (self.mandelbrot.position.y - target_im) * zoom_factor;
+                    // Compute zoom-toward-cursor in f64 to avoid f32 cancellation at deep zoom.
+                    // In f32, position ± zoom collapses to position once zoom < ULP(position),
+                    // making Range::scale map every cursor position to the center.
+                    let cursor_frac_x = cx / size.width as f64;
+                    let cursor_frac_y = cy / size.height as f64;
+                    let pos_re = self.mandelbrot.position.x as f64;
+                    let pos_im = self.mandelbrot.position.y as f64;
+                    let zoom_re = self.mandelbrot.zoom.x;
+                    let zoom_im = self.mandelbrot.zoom.y;
+                    let zf = zoom_factor as f64;
+
+                    // Complex coordinate under cursor
+                    let target_re = pos_re + (2.0 * cursor_frac_x - 1.0) * zoom_re;
+                    let target_im = pos_im + (2.0 * cursor_frac_y - 1.0) * zoom_im;
+
+                    self.mandelbrot.zoom.x = zoom_re * zf;
+                    self.mandelbrot.zoom.y = zoom_im * zf;
+                    self.mandelbrot.position.x = (target_re + (pos_re - target_re) * zf) as f32;
+                    self.mandelbrot.position.y = (target_im + (pos_im - target_im) * zf) as f32;
+
+                    // When HP position is available, sync f32 position from it —
+                    // HP accumulates sub-f64 offsets that the f64 computation above loses.
+                    #[cfg(feature = "perturbation")]
+                    if let Some(hp) = &self.mandelbrot.high_precision_position {
+                        self.mandelbrot.position.x = hp.x.to_f64().value() as f32;
+                        self.mandelbrot.position.y = hp.y.to_f64().value() as f32;
+                    }
+
                     window.request_redraw();
                 }
             }

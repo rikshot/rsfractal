@@ -20,3 +20,5 @@ pixels = "*"
 num-complex = "*"
 anyhow = "*"
 bytemuck = "*"
+image = { version = "*", default-features = false, features = ["png"] }
+serde_json = "*"
