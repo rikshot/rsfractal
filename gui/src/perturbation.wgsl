@@ -34,10 +34,11 @@ var<storage, read> reference_orbit: array<vec2f>;
 @group(0) @binding(4)
 var<storage, read> sa_coefficients: array<vec2f>;
 
+const LN2: f32 = 0.6931471805599453;
+
 fn color_pixel(norm_sq: f32, iterations: u32) -> vec4f {
-    let ln2 = log(2.0);
     let zn = log(norm_sq) / 2.0;
-    let nu = log(zn / ln2) / ln2;
+    let nu = log(zn / LN2) / LN2;
     let smoothed = max(f32(iterations) + 1.0 - nu, 0.0);
     let s = pow(smoothed / f32(params.max_iterations), params.exponent);
     return textureSampleLevel(color_texture, color_sampler, vec2f(s, 0.5), 0.0);
@@ -57,6 +58,19 @@ fn fs_main(@builtin(position) input: vec4f) -> @location(0) vec4f {
     // dc = pixel offset from reference point in fractal coordinates
     let dc_re = pixel_offset.x * params.zoom.x - params.reference_offset.x;
     let dc_im = pixel_offset.y * params.zoom.y - params.reference_offset.y;
+
+    // Cardioid and period-2 bulb check (O(1) interior detection).
+    // Compute actual pixel c from screen position, NOT from dc
+    // (dc has reference_offset baked in, giving wrong c).
+    let pixel_c_re = params.center.x + pixel_offset.x * params.zoom.x;
+    let pixel_c_im = params.center.y + pixel_offset.y * params.zoom.y;
+    let pixel_c_im2 = pixel_c_im * pixel_c_im;
+    var q = pixel_c_re - 0.25;
+    q = q * q + pixel_c_im2;
+    let p2 = pixel_c_re + 1.0;
+    if q * (q + (pixel_c_re - 0.25)) < 0.25 * pixel_c_im2 || p2 * p2 + pixel_c_im2 < 0.0625 {
+        return vec4f(0.0, 0.0, 0.0, 1.0);
+    }
 
     let limit = params.orbit_length;
     let buffer_len = arrayLength(&reference_orbit);
@@ -86,31 +100,49 @@ fn fs_main(@builtin(position) input: vec4f) -> @location(0) vec4f {
 
     var iterations: u32 = start_n;
 
-    // Perturbation iteration: d_{n+1} = 2*Z_n*d_n + d_n^2 + dc
+    // Brent's cycle detection state
+    var old_re = 0.0;
+    var old_im = 0.0;
+    var brent_power = 1u;
+    var brent_lambda = 1u;
+
+    // Perturbation iteration with escape check at the START of each iteration.
+    // This avoids a second buffer read for reference_orbit[n+1] — we only read Z[n]
+    // and use it for both the escape check (full_z = Z[n] + d[n]) and the
+    // perturbation step (d_{n+1} = 2*Z[n]*d[n] + d[n]^2 + dc).
     for (var n: u32 = start_n; n < limit; n++) {
         let z = reference_orbit[n];
 
-        // 2*Z*d (complex multiply, Z is reference orbit value)
+        // Escape + cycle check using full z_n = Z[n] + d[n]
+        let full_re = z.x + d_re;
+        let full_im = z.y + d_im;
+        let norm_sq = full_re * full_re + full_im * full_im;
+        if norm_sq > params.bailout {
+            return color_pixel(norm_sq, n);
+        }
+
+        // Brent's cycle detection (epsilon-based for perturbation path)
+        let diff_re = full_re - old_re;
+        let diff_im = full_im - old_im;
+        let diff_sq = diff_re * diff_re + diff_im * diff_im;
+        if diff_sq < 1e-6 * norm_sq {
+            return vec4f(0.0, 0.0, 0.0, 1.0);
+        }
+        brent_lambda -= 1u;
+        if brent_lambda == 0u {
+            old_re = full_re;
+            old_im = full_im;
+            brent_power *= 2u;
+            brent_lambda = brent_power;
+        }
+
+        // d_{n+1} = 2*Z[n]*d[n] + d[n]^2 + dc
         let t1_re = 2.0 * (z.x * d_re - z.y * d_im);
         let t1_im = 2.0 * (z.x * d_im + z.y * d_re);
-
-        // d*d
         let t2_re = d_re * d_re - d_im * d_im;
         let t2_im = 2.0 * d_re * d_im;
-
-        // d_new = 2*Z*d + d*d + dc
         d_re = t1_re + t2_re + dc_re;
         d_im = t1_im + t2_im + dc_im;
-
-        // Escape check using full z_{n+1} = Z_{n+1} + d_{n+1}
-        if n + 1u < buffer_len {
-            let full_re = reference_orbit[n + 1u].x + d_re;
-            let full_im = reference_orbit[n + 1u].y + d_im;
-            let norm_sq = full_re * full_re + full_im * full_im;
-            if norm_sq > params.bailout {
-                return color_pixel(norm_sq, n + 1u);
-            }
-        }
 
         iterations = n + 1u;
     }
@@ -131,6 +163,13 @@ fn fs_main(@builtin(position) input: vec4f) -> @location(0) vec4f {
         let c_re = params.center.x + dc_re;
         let c_im = params.center.y + dc_im;
 
+        // Reset Brent's for direct iteration (exact equality works here —
+        // no Z+d decomposition, so identical orbits produce identical f32 bits)
+        var fb_old_re = 0.0;
+        var fb_old_im = 0.0;
+        var fb_power = 1u;
+        var fb_lambda = 1u;
+
         for (var i = iterations; i < params.max_iterations; i++) {
             let re2 = z_re * z_re;
             let im2 = z_im * z_im;
@@ -141,6 +180,18 @@ fn fs_main(@builtin(position) input: vec4f) -> @location(0) vec4f {
             let new_re = re2 - im2 + c_re;
             z_im = 2.0 * z_re * z_im + c_im;
             z_re = new_re;
+
+            // Brent's cycle detection (exact equality for direct f32 iteration)
+            if z_re == fb_old_re && z_im == fb_old_im {
+                return vec4f(0.0, 0.0, 0.0, 1.0);
+            }
+            fb_lambda -= 1u;
+            if fb_lambda == 0u {
+                fb_old_re = z_re;
+                fb_old_im = z_im;
+                fb_power *= 2u;
+                fb_lambda = fb_power;
+            }
         }
     }
 

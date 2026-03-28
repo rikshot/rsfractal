@@ -106,7 +106,14 @@ pub fn test_orbit_f64(c_re: f64, c_im: f64, max_iterations: usize, bailout: f64)
 
 pub fn needs_perturbation(zoom_x: f64, width: usize) -> bool {
     let pixel_spacing = (2.0 * zoom_x) / width as f64;
-    pixel_spacing < 1e-5
+    // f32 has ~7 decimal digits (ULP ≈ 2.4e-7 at |c|~2). Perturbation is
+    // only needed when pixel spacing approaches f32 ULP, meaning adjacent
+    // pixels' c values become indistinguishable in f32. Threshold of 1e-7
+    // gives ~1 ULP margin — plenty for accurate direct f32 iteration.
+    // Previous threshold of 1e-5 forced perturbation at moderate zoom where
+    // the standard shader (with cardioid check + exact-equality Brent's
+    // cycle detection) is both faster and more correct.
+    pixel_spacing < 1e-7
 }
 
 pub fn required_precision_bits(zoom_x: f64) -> usize {
@@ -269,6 +276,43 @@ pub fn recompute_sa(orbit: &ReferenceOrbit, max_delta: f64, sa_order: usize) -> 
     compute_sa_from_orbit(&orbit.values, orbit.escape_iteration, max_delta, sa_order)
 }
 
+/// Direct f64 z²+c iteration with Brent's cycle detection (exact equality).
+/// Used by both the rebasing and orbit-escape fallback paths in iterate_perturbation.
+#[inline]
+fn direct_iterate_f64(
+    mut z_re: f64, mut z_im: f64,
+    c_re: f64, c_im: f64,
+    start: usize, end: usize,
+    bailout: f64,
+) -> (f64, usize) {
+    let mut old_re = 0.0_f64;
+    let mut old_im = 0.0_f64;
+    let mut power = 1_usize;
+    let mut lambda = 1_usize;
+    for i in start..end {
+        let re2 = z_re * z_re;
+        let im2 = z_im * z_im;
+        let norm_sq = re2 + im2;
+        if norm_sq > bailout {
+            return (norm_sq, i);
+        }
+        let new_re = re2 - im2 + c_re;
+        z_im = 2.0 * z_re * z_im + c_im;
+        z_re = new_re;
+        if z_re == old_re && z_im == old_im {
+            return (0.0, end);
+        }
+        lambda -= 1;
+        if lambda == 0 {
+            old_re = z_re;
+            old_im = z_im;
+            power *= 2;
+            lambda = power;
+        }
+    }
+    (0.0, end)
+}
+
 pub fn iterate_perturbation(
     orbit: &ReferenceOrbit,
     dc_re: f64,
@@ -298,6 +342,12 @@ pub fn iterate_perturbation(
     let c_re = orbit.center[0] + dc_re;
     let c_im = orbit.center[1] + dc_im;
 
+    // Brent's cycle detection state
+    let mut old_re = 0.0_f64;
+    let mut old_im = 0.0_f64;
+    let mut brent_power = 1_usize;
+    let mut brent_lambda = 1_usize;
+
     for n in start_n..limit {
         // Use f64 orbit values directly
         let z_re = orbit.values[n][0];
@@ -307,20 +357,7 @@ pub fn iterate_perturbation(
         let d_norm_sq = d_re * d_re + d_im * d_im;
         let z_norm_sq = z_re * z_re + z_im * z_im;
         if d_norm_sq > z_norm_sq {
-            let mut fz_re = z_re + d_re;
-            let mut fz_im = z_im + d_im;
-            for i in n..max_iterations {
-                let re2 = fz_re * fz_re;
-                let im2 = fz_im * fz_im;
-                let norm_sq = re2 + im2;
-                if norm_sq > bailout {
-                    return (norm_sq, i);
-                }
-                let new_re = re2 - im2 + c_re;
-                fz_im = 2.0 * fz_re * fz_im + c_im;
-                fz_re = new_re;
-            }
-            return (0.0, max_iterations);
+            return direct_iterate_f64(z_re + d_re, z_im + d_im, c_re, c_im, n, max_iterations, bailout);
         }
 
         // δ(n+1) = 2·Z(n)·δ(n) + δ(n)² + δc
@@ -337,6 +374,20 @@ pub fn iterate_perturbation(
             if norm_sq > bailout {
                 return (norm_sq, n + 1);
             }
+            // Brent's cycle detection (epsilon-based for perturbation path)
+            let diff_re = full_re - old_re;
+            let diff_im = full_im - old_im;
+            let diff_sq = diff_re * diff_re + diff_im * diff_im;
+            if diff_sq < 1e-24 * norm_sq {
+                return (0.0, max_iterations);
+            }
+            brent_lambda -= 1;
+            if brent_lambda == 0 {
+                old_re = full_re;
+                old_im = full_im;
+                brent_power *= 2;
+                brent_lambda = brent_power;
+            }
         }
 
         iterations = n + 1;
@@ -344,23 +395,12 @@ pub fn iterate_perturbation(
 
     // Fallback: reference orbit escaped before max_iterations — direct f64 iteration
     if iterations < max_iterations {
-        let (mut z_re, mut z_im) = if limit < orbit.values.len() {
+        let (z_re, z_im) = if limit < orbit.values.len() {
             (orbit.values[limit][0] + d_re, orbit.values[limit][1] + d_im)
         } else {
             (d_re, d_im)
         };
-
-        for i in iterations..max_iterations {
-            let re2 = z_re * z_re;
-            let im2 = z_im * z_im;
-            let norm_sq = re2 + im2;
-            if norm_sq > bailout {
-                return (norm_sq, i);
-            }
-            let new_re = re2 - im2 + c_re;
-            z_im = 2.0 * z_re * z_im + c_im;
-            z_re = new_re;
-        }
+        return direct_iterate_f64(z_re, z_im, c_re, c_im, iterations, max_iterations, bailout);
     }
 
     (0.0, max_iterations)

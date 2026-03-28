@@ -1,3 +1,5 @@
+const LN2: f32 = 0.6931471805599453;
+
 @vertex
 fn vs_main(@builtin(vertex_index) vertex_index: u32) -> @builtin(position) vec4f {
     var positions = array(vec2f(- 1.0, - 1.0), vec2f(3.0, - 1.0), vec2f(- 1.0, 3.0));
@@ -59,6 +61,12 @@ fn fs_main(@builtin(position) input: vec4f) -> @location(0) vec4f {
     if q * (q + (c.re - 0.25)) < 0.25 * im2 || p2 * p2 + im2 < 0.0625 {
         iterations = params.max_iterations;
     } else {
+        // Brent's cycle detection state
+        var old_re = 0.0;
+        var old_im = 0.0;
+        var brent_power = 1u;
+        var brent_lambda = 1u;
+
         while iterations < params.max_iterations {
             re2 = z.re * z.re;
             im2 = z.im * z.im;
@@ -68,6 +76,20 @@ fn fs_main(@builtin(position) input: vec4f) -> @location(0) vec4f {
             temp = re2 - im2 + c.re;
             z.im = 2.0 * z.re * z.im + c.im;
             z.re = temp;
+
+            // Brent's cycle detection (exact equality for direct f32 iteration)
+            if z.re == old_re && z.im == old_im {
+                iterations = params.max_iterations;
+                break;
+            }
+            brent_lambda -= 1u;
+            if brent_lambda == 0u {
+                old_re = z.re;
+                old_im = z.im;
+                brent_power *= 2u;
+                brent_lambda = brent_power;
+            }
+
             iterations += 1u;
         }
     }
@@ -76,9 +98,8 @@ fn fs_main(@builtin(position) input: vec4f) -> @location(0) vec4f {
         return vec4f(0.0, 0.0, 0.0, 1.0);
     }
 
-    let ln2 = log(2.0);
     let zn = log(re2 + im2) / 2.0;
-    let nu = log(zn / ln2) / ln2;
+    let nu = log(zn / LN2) / LN2;
     temp = max(f32(iterations) + 1.0 - nu, 0.0);
 
     let s = pow(temp / f32(params.max_iterations), params.exponent);
