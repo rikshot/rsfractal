@@ -260,16 +260,18 @@ impl ApplicationHandler for App<'_> {
             WindowEvent::CursorMoved { position, .. } => {
                 self.cursor_position = (position.x, position.y);
             }
-            WindowEvent::MouseWheel {
-                delta: MouseScrollDelta::PixelDelta(physical_position),
-                ..
-            } => {
-                let zoom_factor = if physical_position.y > 0.0 {
-                    0.9
-                } else if physical_position.y < 0.0 {
-                    1.1
-                } else {
-                    return;
+            WindowEvent::MouseWheel { delta, .. } => {
+                let zoom_factor = match delta {
+                    MouseScrollDelta::PixelDelta(pos) => {
+                        if pos.y == 0.0 { return; }
+                        // Trackpad: proportional to gesture magnitude
+                        f64::powf(0.997, pos.y)
+                    }
+                    MouseScrollDelta::LineDelta(_, y) => {
+                        if y == 0.0 { return; }
+                        // Mouse wheel: fixed step per click
+                        if y > 0.0 { 0.9 } else { 1.1 }
+                    }
                 };
                 if let Some(window) = &self.window {
                     let size = window.inner_size();
